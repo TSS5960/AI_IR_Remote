@@ -437,7 +437,6 @@ function startFirebaseStreams() {
   loadChartForRange(chartRange);
   loadLightChartForRange(lightChartRange);
   fetchStatus();
-  fetchSensorData();
   fetchAlarms();
   startStatusStream();
   startAlarmsStream();
@@ -702,6 +701,7 @@ function updateSensorDisplay(sensors, timestamp) {
 }
 
 function updateStatus(status) {
+  console.log('[Debug] updateStatus called with:', status);
   if (!status) {
     return;
   }
@@ -723,7 +723,10 @@ function updateStatus(status) {
 
   // Update sensors if present in status
   if (status.sensors) {
+    console.log('[Debug] Sensors found in status, calling updateSensorDisplay');
     updateSensorDisplay(status.sensors, status.timestamp);
+  } else {
+    console.warn('[Debug] No sensors in status object');
   }
 
   if (status.brand && brandSelect) {
@@ -2238,5 +2241,4 @@ loadConfigFromWorker().then(startFirebaseStreams);
 setPowerControls(false);
 updatePowerButtons(false);
 setInterval(fetchStatus, REFRESH_INTERVAL_MS);
-setInterval(fetchSensorData, REFRESH_INTERVAL_MS);
 setInterval(fetchAlarms, ALARM_REFRESH_INTERVAL_MS);
