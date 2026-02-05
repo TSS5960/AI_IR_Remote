@@ -1,0 +1,38 @@
+/*
+ * Firebase Configuration Template
+ * Copy this file and update with your Firebase settings.
+ */
+
+#ifndef FIREBASE_CONFIG_H
+#define FIREBASE_CONFIG_H
+
+#include <pgmspace.h>
+
+// Example: "https://your-project-id-default-rtdb.firebaseio.com"
+#define FIREBASE_DB_URL "YOUR_FIREBASE_DATABASE_URL"
+
+// Realtime Database secret or ID token (leave empty if DB rules allow public write)
+#define FIREBASE_AUTH ""
+
+// Device identifier used in database paths
+#define FIREBASE_DEVICE_ID "ESP32_AC_Remote_001"
+
+// HTTP and status settings
+#define FIREBASE_TIMEOUT_MS 3000
+#define FIREBASE_STATUS_TTL_MS 30000
+
+// Set to 1 only for local testing; keep 0 for proper TLS validation.
+#define FIREBASE_ALLOW_INSECURE 1
+
+// Disable event append for quick bring-up (saves a second HTTP request)
+#define FIREBASE_ENABLE_EVENTS 0
+
+// Minimum interval between Firebase writes
+#define FIREBASE_SEND_INTERVAL_MS 1500
+
+// Root CA for Firebase RTDB (GTS/GlobalSign). Leave empty to force update.
+static const char FIREBASE_ROOT_CA[] PROGMEM = R"EOF(
+
+)EOF";
+
+#endif // FIREBASE_CONFIG_H
