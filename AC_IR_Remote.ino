@@ -190,8 +190,6 @@ void onWakeWordDetected() {
   
   // Optional: Play a confirmation beep
   playActionTone();
-  
-  Serial.println("[WakeWord] RGB LED ON (White) for 3 seconds");
 }
 
 void setup() {
@@ -217,13 +215,16 @@ void setup() {
   showBootScreen();
   delay(2000);
   
+  // Initialize sensors EARLY (before I2S to avoid I2C timing issues)
+  initSensors();
+  
   // Initialize IR
   initIR();
   
   // Initialize speaker
   initSpeaker();
   
-  // Initialize microphone
+  // Initialize microphone (but don't start wake word yet)
   initMicrophone();
   
   // Initialize buttons
@@ -234,9 +235,6 @@ void setup() {
   
   // Initialize IR learning
   initIRLearning();
-
-  // Initialize sensors
-  initSensors();
 
   // Set default screen to Clock
   setScreen(SCREEN_CLOCK);
@@ -273,7 +271,7 @@ void setup() {
   
   // Initialize wake word detection
   Serial.println("\n[WakeWord] Setting up voice activation...");
-  setWakeWordCallback(onWakeWordDetected);
+  setWakeWordCallback(onWakeWordDetected);  // LED and beep when "Hey Bob" confirmed
   if (startWakeWordDetection()) {
     Serial.println("[WakeWord] OK: Listening for 'Hey Bob'");
   } else {
@@ -290,7 +288,14 @@ void setup() {
 }
 
 void loop() {
-  // Update wake word detection
+  // Handle WiFi Manager (if in config portal mode)
+  handleWiFiManager();
+  
+  // Handle Firebase and MQTT first (critical network operations)
+  handleFirebase();
+  handleMqttBroker();
+  
+  // Update wake word detection (throttled to not block network)
   updateWakeWordDetection();
   
   // Handle wake word LED timer (turn off after 3 seconds)
@@ -300,13 +305,6 @@ void loop() {
     wakeWordLedActive = false;
     Serial.println("[WakeWord] RGB LED OFF");
   }
-  
-  // Handle WiFi Manager (if in config portal mode)
-  handleWiFiManager();
-  
-  // Handle Firebase background tasks (if any)
-  handleFirebase();
-  handleMqttBroker();
 
   // Periodic status log
   static unsigned long lastHeartbeatMs = 0;
@@ -379,6 +377,42 @@ void handleCommand(const String& line) {
     return;
   }
 
+  // Check for multi-character commands first
+  String lineLower = line;
+  lineLower.toLowerCase();
+  lineLower.trim();
+  
+  if (lineLower == "train") {
+    trainWakeWord();
+    return;
+  }
+  
+  if (lineLower == "wake_start") {
+    startWakeWordDetection();
+    return;
+  }
+  
+  if (lineLower == "wake_stop") {
+    stopWakeWordDetection();
+    return;
+  }
+  
+  if (lineLower == "test") {
+    testSpeaker();
+    return;
+  }
+  
+  if (lineLower == "voice" || lineLower == "vlevel" || lineLower == "mic") {
+    testMicrophoneLevel();
+    return;
+  }
+  
+  if (lineLower == "repeat" || lineLower == "echo") {
+    recordAndPlayback();
+    return;
+  }
+
+  // Single character commands
   char cmd = line.charAt(0);
   char cmdLower = (char)tolower(cmd);
   const char* args = line.c_str() + 1;
@@ -436,8 +470,8 @@ void handleCommand(const String& line) {
       }
       break;
       
-    case 't':  // Test speaker
-      testSpeaker();
+    case 't':  // Test (deprecated, use "test" command instead)
+      Serial.println("[System] Use 'test' command for speaker testing");
       break;
 
     case 'm':  // Manual sensor test
@@ -553,13 +587,21 @@ void printHelp() {
   Serial.println("  System:");
   Serial.println("  ----------------------------------------");
   Serial.println("  s - Switch screen (manual test)");
-  Serial.println("  t - Test speaker");
+  Serial.println("  test - Test speaker");
   Serial.println("  m - Read sensors (PIR, DHT11, GY-30)");
   Serial.println("  l - Enter IR learning mode");
   Serial.println("  q - Exit special mode");
   Serial.println("  w - Show WiFi/Firebase/MQTT status");
   Serial.println("  r - Reset WiFi configuration");
   Serial.println("  h - Show this help");
+  Serial.println();
+  Serial.println("  Wake Word (Voice Control):");
+  Serial.println("  ----------------------------------------");
+  Serial.println("  voice - Test microphone (show voice levels)");
+  Serial.println("  repeat - Record 3 sec and play back");
+  Serial.println("  train - Train 'Hey Bob' wake word");
+  Serial.println("  wake_start - Start wake word detection");
+  Serial.println("  wake_stop - Stop wake word detection");
   Serial.println();
   Serial.println("  Alarm:");
   Serial.println("  ----------------------------------------");

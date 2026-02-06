@@ -55,4 +55,10 @@ void updateWakeWordDetection();
 // Train/capture the wake word pattern (say "Hey Bob" when calling this)
 void trainWakeWord();
 
+// Test microphone - show voice levels in real-time
+void testMicrophoneLevel();
+
+// Record and playback test (3 seconds)
+void recordAndPlayback();
+
 #endif // MIC_CONTROL_H

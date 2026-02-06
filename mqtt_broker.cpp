@@ -493,13 +493,19 @@ void handleMqttBroker() {
     return;
   }
 
+  // Call loop more frequently for better network handling
   client.loop();
+  yield();  // Give WiFi stack time to process
 
   if (!client.connected()) {
     unsigned long now = millis();
     if (now - lastReconnectAttempt > RECONNECT_INTERVAL) {
       lastReconnectAttempt = now;
       Serial.println("[MQTT] Connection lost, attempting to reconnect...");
+      if (WiFi.status() != WL_CONNECTED) {
+        Serial.println("[MQTT] WiFi disconnected, waiting for WiFi...");
+        return;
+      }
       connectMqttBroker();
     }
   }

@@ -102,36 +102,36 @@ SensorData readAllSensors() {
 }
 
 void printSensorData(const SensorData &data) {
-  Serial.println("\n========================================");
-  Serial.println("  SENSOR DATA");
-  Serial.println("========================================");
-  Serial.println();
+  // Serial.println("\n========================================");
+  // Serial.println("  SENSOR DATA");
+  // Serial.println("========================================");
+  // Serial.println();
 
-  // PIR Motion Sensor
-  Serial.println("  PIR Motion Sensor:");
-  Serial.println("  ----------------------------------------");
-  Serial.printf("  Motion: %s\n", data.motionDetected ? "DETECTED" : "None");
-  Serial.println();
+  // // PIR Motion Sensor
+  // Serial.println("  PIR Motion Sensor:");
+  // Serial.println("  ----------------------------------------");
+  // Serial.printf("  Motion: %s\n", data.motionDetected ? "DETECTED" : "None");
+  // Serial.println();
 
-  // DHT11 Temperature & Humidity
-  Serial.println("  DHT11 (Temp & Humidity):");
-  Serial.println("  ----------------------------------------");
-  if (data.dht_valid) {
-    Serial.printf("  Temperature: %.1fC\n", data.dht_temperature);
-    Serial.printf("  Humidity: %.1f%%\n", data.dht_humidity);
-  } else {
-    Serial.println("  Status: READ FAILED");
-  }
-  Serial.println();
+  // // DHT11 Temperature & Humidity
+  // Serial.println("  DHT11 (Temp & Humidity):");
+  // Serial.println("  ----------------------------------------");
+  // if (data.dht_valid) {
+  //   Serial.printf("  Temperature: %.1fC\n", data.dht_temperature);
+  //   Serial.printf("  Humidity: %.1f%%\n", data.dht_humidity);
+  // } else {
+  //   Serial.println("  Status: READ FAILED");
+  // }
+  // Serial.println();
 
-  // GY-30 Light Sensor
-  Serial.println("  GY-30 (Light):");
-  Serial.println("  ----------------------------------------");
-  if (data.light_valid) {
-    Serial.printf("  Lux: %.1f lx\n", data.light_lux);
-  } else {
-    Serial.println("  Status: READ FAILED or NOT INITIALIZED");
-  }
-  Serial.println("  ----------------------------------------");
-  Serial.println();
+  // // GY-30 Light Sensor
+  // Serial.println("  GY-30 (Light):");
+  // Serial.println("  ----------------------------------------");
+  // if (data.light_valid) {
+  //   Serial.printf("  Lux: %.1f lx\n", data.light_lux);
+  // } else {
+  //   Serial.println("  Status: READ FAILED or NOT INITIALIZED");
+  // }
+  // Serial.println("  ----------------------------------------");
+  // Serial.println();
 }

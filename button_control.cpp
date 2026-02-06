@@ -200,10 +200,10 @@ void initButtons() {
   pinMode(JOY_Y_PIN, INPUT);
   pinMode(JOY_SW_PIN, INPUT_PULLUP);
 
-  Serial.println("[Joystick] OK: Pins configured");
-  Serial.printf("[Joystick]   VRx: GPIO%d\n", JOY_X_PIN);
-  Serial.printf("[Joystick]   VRy: GPIO%d\n", JOY_Y_PIN);
-  Serial.printf("[Joystick]   SW : GPIO%d\n", JOY_SW_PIN);
+  // Serial.println("[Joystick] OK: Pins configured");
+  // Serial.printf("[Joystick]   VRx: GPIO%d\n", JOY_X_PIN);
+  // Serial.printf("[Joystick]   VRy: GPIO%d\n", JOY_Y_PIN);
+  // Serial.printf("[Joystick]   SW : GPIO%d\n", JOY_SW_PIN);
 
   delay(100);
   calibrateJoystick();
@@ -213,17 +213,17 @@ void initButtons() {
   joyArmed = true;
   lastJoyDir = JOY_NEUTRAL;
 
-  Serial.printf("[Joystick] Center calibrated: X=%d Y=%d\n", joyCenterX, joyCenterY);
-  Serial.printf("[Joystick] Deadzone=%d Trigger=%d Margin=%d\n",
-                JOY_DEADZONE,
-                JOY_TRIGGER_THRESHOLD,
-                JOY_AXIS_MARGIN);
-  Serial.printf("[Joystick] SW initial state: %d (should be 1 when not pressed)\n",
-                digitalRead(JOY_SW_PIN));
+  // Serial.printf("[Joystick] Center calibrated: X=%d Y=%d\n", joyCenterX, joyCenterY);
+  // Serial.printf("[Joystick] Deadzone=%d Trigger=%d Margin=%d\n",
+  //               JOY_DEADZONE,
+  //               JOY_TRIGGER_THRESHOLD,
+  //               JOY_AXIS_MARGIN);
+  // Serial.printf("[Joystick] SW initial state: %d (should be 1 when not pressed)\n",
+  //               digitalRead(JOY_SW_PIN));
 
-  Serial.println("\n========================================");
-  Serial.println("  JOYSTICK INITIALIZATION COMPLETE");
-  Serial.println("========================================\n");
+  // Serial.println("\n========================================");
+  // Serial.println("  JOYSTICK INITIALIZATION COMPLETE");
+  // Serial.println("========================================\n");
 }
 
 static void handleScreenSwitch(JoyDirection dir) {
@@ -242,22 +242,22 @@ static void handleScreenSwitch(JoyDirection dir) {
     currentScreen = (ScreenMode)((currentScreen + SCREEN_COUNT - 1) % SCREEN_COUNT);
   }
 
-  Serial.println("========================================");
-  Serial.println("[Joystick] Screen switch detected!");
-  Serial.printf("[Joystick] Old screen: %d\n", oldScreen);
-  Serial.printf("[Joystick] New screen: %d\n", currentScreen);
+  // Serial.println("========================================");
+  // Serial.println("[Joystick] Screen switch detected!");
+  // Serial.printf("[Joystick] Old screen: %d\n", oldScreen);
+  // Serial.printf("[Joystick] New screen: %d\n", currentScreen);
 
-  const char* screenNames[] = {"VOLUME", "CLOCK", "NETWORK", "AC", "IR_LEARN", "SENSORS"};
-  Serial.printf("[Joystick] Switching: %s -> %s\n",
-                screenNames[oldScreen], screenNames[currentScreen]);
+  // const char* screenNames[] = {"VOLUME", "CLOCK", "NETWORK", "AC", "IR_LEARN", "SENSORS"};
+  // Serial.printf("[Joystick] Switching: %s -> %s\n",
+  //               screenNames[oldScreen], screenNames[currentScreen]);
 
   playBeep(1000, 50);
   delay(30);
   playBeep(1200, 50);
 
   updateScreenDisplay();
-  Serial.println("[Joystick] Screen updated!");
-  Serial.println("========================================");
+  // Serial.println("[Joystick] Screen updated!");
+  // Serial.println("========================================");
 }
 
 static void adjustVolume(int delta) {
@@ -272,7 +272,7 @@ static void adjustVolume(int delta) {
   }
 
   setSpeakerVolume(newVol);
-  Serial.printf("[Joystick] Volume: %d%% -> %d%%\n", currentVol, newVol);
+  // Serial.printf("[Joystick] Volume: %d%% -> %d%%\n", currentVol, newVol);
   playBeep(delta > 0 ? 1200 : 1000, 100);
   updateScreenDisplay();
 }
@@ -385,22 +385,22 @@ void handleButtons() {
     int dx = rawX - joyCenterX;
     int dy = rawY - joyCenterY;
     JoyDirection rawDir = resolveDirectionFromDelta(dx, dy);
-    Serial.printf("[Joystick] Raw X=%d Y=%d dX=%d dY=%d SW=%d dir=%s screen=%d\n",
-                  rawX,
-                  rawY,
-                  dx,
-                  dy,
-                  digitalRead(JOY_SW_PIN),
-                  joyDirName(rawDir),
-                  currentScreen);
+    // Serial.printf("[Joystick] Raw X=%d Y=%d dX=%d dY=%d SW=%d dir=%s screen=%d\n",
+    //               rawX,
+    //               rawY,
+    //               dx,
+    //               dy,
+    //               digitalRead(JOY_SW_PIN),
+    //               joyDirName(rawDir),
+    //               currentScreen);
     lastJoyLogMs = now;
   }
 
   if (dirEvent != JOY_NEUTRAL) {
-    Serial.printf("[Joystick] Direction event: %s\n", joyDirName(dirEvent));
+    // Serial.printf("[Joystick] Direction event: %s\n", joyDirName(dirEvent));
   }
   if (clickEvent) {
-    Serial.println("[Joystick] Click event");
+    // Serial.println("[Joystick] Click event");
   }
 
   if (handleAlarmInputs(dirEvent, clickEvent)) {

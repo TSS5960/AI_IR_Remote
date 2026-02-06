@@ -20,14 +20,17 @@ static WakeWordCallback wakeWordCallback = nullptr;
 static unsigned long lastWakeWordTime = 0;
 static const unsigned long WAKE_WORD_COOLDOWN = 2000; // 2 second cooldown
 
-// Wake word pattern (simplified audio energy pattern)
-static int wakeWordPattern[10] = {0}; // Store energy pattern
+// Wake word pattern - actual audio waveform
+#define WAKE_WORD_SAMPLES 24000  // 1.5 seconds at 16kHz
+static int16_t* wakeWordPattern = nullptr;  // Dynamically allocated
 static bool wakeWordTrained = false;
 
-// Audio pattern buffer for detection
-#define PATTERN_BUFFER_SIZE 10
-static int audioPatternBuffer[PATTERN_BUFFER_SIZE] = {0};
-static int patternIndex = 0;
+// Audio buffer for detection (rolling buffer)
+#define AUDIO_BUFFER_SAMPLES 24000  // Same size as pattern
+static int16_t* audioBuffer = nullptr;
+static int audioBufferIndex = 0;
+
+static const float CORRELATION_THRESHOLD = 0.65;  // Correlation coefficient threshold (0-1)
 
 /**
  * Initialize the INMP441 microphone
@@ -43,7 +46,7 @@ bool initMicrophone() {
     .channel_format = I2S_CHANNEL_FMT_ONLY_LEFT,         // Mono microphone
     .communication_format = I2S_COMM_FORMAT_STAND_I2S,   // Standard I2S format
     .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,            // Interrupt level 1
-    .dma_buf_count = 8,                                   // Number of DMA buffers
+    .dma_buf_count = 4,                                   // Reduced from 8 to 4 (less interrupt load)
     .dma_buf_len = 64,                                    // Size of each DMA buffer
     .use_apll = false,                                    // Don't use APLL
     .tx_desc_auto_clear = false,                          // Not used for RX
@@ -223,51 +226,69 @@ void deinitMicrophone() {
 // ========== Wake Word Detection Implementation ==========
 
 /**
- * Calculate audio energy from samples
+ * Calculate correlation coefficient between two audio signals
+ * Returns value between 0 (no match) and 1 (perfect match)
  */
-static int calculateAudioEnergy(int16_t* samples, size_t count) {
-  int64_t sum = 0;
-  for (size_t i = 0; i < count; i++) {
-    int32_t val = samples[i];
-    sum += val * val;
+static float calculateCorrelation(int16_t* signal1, int16_t* signal2, size_t length) {
+  // Calculate means
+  float mean1 = 0, mean2 = 0;
+  for (size_t i = 0; i < length; i++) {
+    mean1 += signal1[i];
+    mean2 += signal2[i];
   }
-  int32_t rms = sqrt(sum / count);
-  return (rms * 100) / 32768; // Normalize to 0-100
+  mean1 /= length;
+  mean2 /= length;
+  
+  // Calculate correlation coefficient
+  float numerator = 0;
+  float denom1 = 0, denom2 = 0;
+  
+  for (size_t i = 0; i < length; i++) {
+    float diff1 = signal1[i] - mean1;
+    float diff2 = signal2[i] - mean2;
+    numerator += diff1 * diff2;
+    denom1 += diff1 * diff1;
+    denom2 += diff2 * diff2;
+  }
+  
+  if (denom1 == 0 || denom2 == 0) return 0;
+  
+  float correlation = numerator / sqrt(denom1 * denom2);
+  return abs(correlation);  // Return absolute value
 }
 
 /**
- * Check if current audio pattern matches wake word
- * Simple pattern matching: looking for "Hey Bob" pattern
- * Pattern: [silence] [energy spike "Hey"] [brief pause] [energy spike "Bob"] [silence]
+ * Check if current audio buffer matches wake word pattern using correlation
  */
 static bool matchesWakeWordPattern() {
-  if (!wakeWordTrained) {
-    // Default pattern for "Hey Bob": two energy spikes with a dip
-    // Pattern indices: 0-2 silence, 3-4 "Hey", 5 dip, 6-7 "Bob", 8-9 silence
-    int pattern[PATTERN_BUFFER_SIZE] = {5, 8, 12, 45, 50, 25, 48, 52, 15, 8};
-    
-    // Simple correlation matching
-    int matchScore = 0;
-    for (int i = 0; i < PATTERN_BUFFER_SIZE; i++) {
-      int diff = abs(audioPatternBuffer[i] - pattern[i]);
-      if (diff < 20) { // Threshold for matching
-        matchScore++;
-      }
-    }
-    
-    // Need at least 60% match
-    return matchScore >= 6;
-  } else {
-    // Use trained pattern
-    int matchScore = 0;
-    for (int i = 0; i < PATTERN_BUFFER_SIZE; i++) {
-      int diff = abs(audioPatternBuffer[i] - wakeWordPattern[i]);
-      if (diff < 25) {
-        matchScore++;
-      }
-    }
-    return matchScore >= 7;
+  if (!wakeWordTrained || wakeWordPattern == nullptr || audioBuffer == nullptr) {
+    return false;
   }
+  
+  // Create a linearized copy of circular buffer for correlation
+  // The buffer is organized with audioBufferIndex pointing to the oldest sample
+  int16_t* linearBuffer = (int16_t*)malloc(AUDIO_BUFFER_SAMPLES * sizeof(int16_t));
+  if (linearBuffer == nullptr) {
+    return false;
+  }
+  
+  // Copy from current index to end
+  size_t firstPart = AUDIO_BUFFER_SAMPLES - audioBufferIndex;
+  memcpy(linearBuffer, &audioBuffer[audioBufferIndex], firstPart * sizeof(int16_t));
+  
+  // Copy from start to current index
+  if (audioBufferIndex > 0) {
+    memcpy(&linearBuffer[firstPart], audioBuffer, audioBufferIndex * sizeof(int16_t));
+  }
+  
+  // Calculate correlation between linear buffer and trained pattern
+  float correlation = calculateCorrelation(linearBuffer, wakeWordPattern, WAKE_WORD_SAMPLES);
+  
+  free(linearBuffer);
+  
+  Serial.printf("[WakeWord] Correlation: %.3f (threshold: %.2f)\n", correlation, CORRELATION_THRESHOLD);
+  
+  return correlation >= CORRELATION_THRESHOLD;
 }
 
 /**
@@ -284,6 +305,25 @@ bool startWakeWordDetection() {
     return true;
   }
   
+  // Check if wake word has been trained
+  if (!wakeWordTrained || wakeWordPattern == nullptr) {
+    Serial.println("[WakeWord] ERROR: No trained pattern found");
+    Serial.println("[WakeWord] Please run 'train' command first");
+    return false;
+  }
+  
+  // Allocate audio buffer if needed
+  if (audioBuffer == nullptr) {
+    audioBuffer = (int16_t*)malloc(AUDIO_BUFFER_SAMPLES * sizeof(int16_t));
+    if (audioBuffer == nullptr) {
+      Serial.println("[WakeWord] ERROR: Failed to allocate audio buffer");
+      return false;
+    }
+    // Clear buffer
+    memset(audioBuffer, 0, AUDIO_BUFFER_SAMPLES * sizeof(int16_t));
+    audioBufferIndex = 0;
+  }
+  
   // Start recording
   if (!startRecording()) {
     Serial.println("[WakeWord] Failed to start recording");
@@ -291,15 +331,12 @@ bool startWakeWordDetection() {
   }
   
   wakeWordDetectionActive = true;
-  patternIndex = 0;
   lastWakeWordTime = 0;
   
   Serial.println("[WakeWord] Detection started - listening for 'Hey Bob'");
-  if (!wakeWordTrained) {
-    Serial.println("[WakeWord] Using default pattern (call trainWakeWord() to customize)");
-  } else {
-    Serial.println("[WakeWord] Using trained pattern");
-  }
+  Serial.printf("[WakeWord] Using trained pattern (%d samples, %.1fs)\\n", 
+                WAKE_WORD_SAMPLES, (float)WAKE_WORD_SAMPLES / MIC_SAMPLE_RATE);
+  Serial.printf("[WakeWord] Correlation threshold: %.2f\\n", CORRELATION_THRESHOLD);
   
   return true;
 }
@@ -334,12 +371,23 @@ bool isWakeWordDetectionActive() {
 
 /**
  * Update wake word detection - call this in main loop()
- * This processes audio and detects the wake word pattern
+ * This processes audio and detects the wake word pattern using correlation
  */
 void updateWakeWordDetection() {
-  if (!wakeWordDetectionActive) {
+  if (!wakeWordDetectionActive || !wakeWordTrained) {
     return;
   }
+  
+  if (audioBuffer == nullptr) {
+    return;  
+  }
+  
+  // Throttle detection to avoid excessive I2S reads
+  static unsigned long lastUpdateTime = 0;
+  if (millis() - lastUpdateTime < 100) {
+    return;
+  }
+  lastUpdateTime = millis();
   
   // Cooldown check to prevent multiple detections
   if (millis() - lastWakeWordTime < WAKE_WORD_COOLDOWN) {
@@ -347,7 +395,7 @@ void updateWakeWordDetection() {
   }
   
   // Read audio samples
-  const size_t sampleCount = 64;
+  const size_t sampleCount = 512;
   int16_t samples[sampleCount];
   
   size_t bytesRead = readAudioSamples(samples, sampleCount);
@@ -355,14 +403,13 @@ void updateWakeWordDetection() {
     return;
   }
   
-  // Calculate energy for this audio chunk
-  int energy = calculateAudioEnergy(samples, sampleCount);
+  // Add samples to rolling buffer
+  for (size_t i = 0; i < sampleCount; i++) {
+    audioBuffer[audioBufferIndex] = samples[i];
+    audioBufferIndex = (audioBufferIndex + 1) % AUDIO_BUFFER_SAMPLES;
+  }
   
-  // Update pattern buffer (circular buffer)
-  audioPatternBuffer[patternIndex] = energy;
-  patternIndex = (patternIndex + 1) % PATTERN_BUFFER_SIZE;
-  
-  // Check if pattern matches wake word
+  // Check correlation with trained pattern
   if (matchesWakeWordPattern()) {
     Serial.println("[WakeWord] *** DETECTED: Hey Bob! ***");
     lastWakeWordTime = millis();
@@ -371,16 +418,11 @@ void updateWakeWordDetection() {
     if (wakeWordCallback != nullptr) {
       wakeWordCallback();
     }
-    
-    // Clear pattern buffer to prevent re-triggering
-    for (int i = 0; i < PATTERN_BUFFER_SIZE; i++) {
-      audioPatternBuffer[i] = 0;
-    }
   }
 }
 
 /**
- * Train the wake word pattern
+ * Train the wake word pattern by recording actual audio waveform
  * Call this function, then say "Hey Bob" clearly
  */
 void trainWakeWord() {
@@ -389,57 +431,225 @@ void trainWakeWord() {
     return;
   }
   
+  // Allocate memory for wake word pattern if needed
+  if (wakeWordPattern == nullptr) {
+    wakeWordPattern = (int16_t*)malloc(WAKE_WORD_SAMPLES * sizeof(int16_t));
+    if (wakeWordPattern == nullptr) {
+      Serial.println("[WakeWord] ERROR: Failed to allocate pattern memory");
+      return;
+    }
+  }
+  
   Serial.println("\n[WakeWord] === Training Mode ===");
-  Serial.println("[WakeWord] Say 'Hey Bob' clearly when prompted...");
-  Serial.println("[WakeWord] Starting in 3 seconds...");
+  Serial.println("[WakeWord] >>> SAY 'HEY BOB' NOW! <<<");
+  Serial.println("[WakeWord] Recording will start immediately...");
   
-  delay(3000);
-  
-  // Start recording
+  // Ensure recording is active
   bool wasRecording = recording;
-  if (!wasRecording) {
+  if (!recording) {
     startRecording();
   }
   
-  Serial.println("[WakeWord] >>> SAY 'HEY BOB' NOW! <<<");
+  delay(500);  // Brief delay for user to prepare
+  Serial.println("[WakeWord] Recording started!");
   
-  // Record pattern over 2 seconds
-  int patternTemp[PATTERN_BUFFER_SIZE] = {0};
-  const size_t sampleCount = 64;
-  int16_t samples[sampleCount];
+  // Record waveform immediately
+  const size_t chunkSize = 512;
+  int16_t samples[chunkSize];
+  size_t samplesRecorded = 0;
   
-  unsigned long startTime = millis();
-  int captureIndex = 0;
-  
-  while (millis() - startTime < 2000 && captureIndex < PATTERN_BUFFER_SIZE) {
-    size_t bytesRead = readAudioSamples(samples, sampleCount);
-    if (bytesRead > 0) {
-      int energy = calculateAudioEnergy(samples, sampleCount);
-      patternTemp[captureIndex] = energy;
-      captureIndex++;
-      Serial.printf("[WakeWord] Captured: %d (energy: %d)\n", captureIndex, energy);
+  while (samplesRecorded < WAKE_WORD_SAMPLES) {
+    size_t bytesRead = readAudioSamples(samples, chunkSize);
+    if (bytesRead == 0) {
+      delay(50);
+      continue;
     }
-    delay(200); // 200ms intervals
+    
+    // Copy samples to pattern buffer
+    size_t samplesToCopy = min((size_t)(bytesRead / sizeof(int16_t)), WAKE_WORD_SAMPLES - samplesRecorded);
+    memcpy(&wakeWordPattern[samplesRecorded], samples, samplesToCopy * sizeof(int16_t));
+    samplesRecorded += samplesToCopy;
+    
+    // Progress indicator
+    if (samplesRecorded % 4000 == 0) {
+      Serial.print(".");
+    }
   }
   
-  // Save the pattern
-  for (int i = 0; i < PATTERN_BUFFER_SIZE; i++) {
-    wakeWordPattern[i] = patternTemp[i];
-  }
+  Serial.println();
+  Serial.printf("[WakeWord] Recorded %d samples (%.1f seconds)\n", 
+                samplesRecorded, (float)samplesRecorded / MIC_SAMPLE_RATE);
   
   wakeWordTrained = true;
-  
-  Serial.println("[WakeWord] Training complete!");
-  Serial.print("[WakeWord] Pattern: ");
-  for (int i = 0; i < PATTERN_BUFFER_SIZE; i++) {
-    Serial.printf("%d ", wakeWordPattern[i]);
-  }
-  Serial.println();
   
   if (!wasRecording) {
     stopRecording();
   }
   
+  Serial.println("[WakeWord] Training complete!");
+  Serial.println("[WakeWord] Wake word pattern has been saved");
   Serial.println("[WakeWord] You can now use startWakeWordDetection()");
 }
 
+/**
+ * Test microphone - show real-time audio levels
+ */
+void testMicrophoneLevel() {
+  if (!micInitialized) {
+    Serial.println("[Microphone] ERROR: Microphone not initialized");
+    return;
+  }
+  
+  Serial.println("\n[Microphone] === Voice Level Monitor ===");
+  Serial.println("[Microphone] Showing raw audio RMS values...");
+  Serial.println("[Microphone] Press any key to stop");
+  Serial.println();
+  
+  // Ensure recording is active
+  bool wasRecording = recording;
+  if (!recording) {
+    startRecording();
+  }
+  
+  const size_t sampleCount = 64;
+  int16_t samples[sampleCount];
+  
+  // Monitor for 10 seconds or until user presses a key
+  unsigned long startTime = millis();
+  while (millis() - startTime < 10000) {
+    // Check if user wants to stop
+    if (Serial.available() > 0) {
+      Serial.read(); // Clear the input
+      break;
+    }
+    
+    size_t bytesRead = readAudioSamples(samples, sampleCount);
+    if (bytesRead > 0) {
+      // Calculate RMS directly
+      int64_t sum = 0;
+      for (size_t i = 0; i < sampleCount; i++) {
+        int32_t val = samples[i];
+        sum += val * val;
+      }
+      int32_t rms = sqrt(sum / sampleCount);
+      int level = (rms * 100) / 32768; // Normalize to 0-100
+      
+      // Visual bar display
+      Serial.print("[Microphone] RMS: ");
+      Serial.printf("%5d (Level: %3d) ", rms, level);
+      
+      // Draw bar graph
+      int barLength = (level > 100) ? 100 : level;
+      for (int i = 0; i < barLength / 2; i++) {
+        Serial.print("=");
+      }
+      
+      Serial.println();
+    }
+    
+    delay(100); // Update every 100ms
+  }
+  
+  if (!wasRecording) {
+    stopRecording();
+  }
+  
+  Serial.println();
+  Serial.println("[Microphone] Voice level monitor stopped");
+}
+
+/**
+ * Record 3 seconds of audio and play it back
+ */
+void recordAndPlayback() {
+  if (!micInitialized) {
+    Serial.println("[Microphone] ERROR: Microphone not initialized");
+    return;
+  }
+  
+  // 3 seconds at 16kHz = 48,000 samples
+  const size_t recordDuration = 3000; // milliseconds
+  const size_t totalSamples = (MIC_SAMPLE_RATE * recordDuration) / 1000;
+  
+  // Allocate buffer for recording
+  int16_t* recordBuffer = (int16_t*)malloc(totalSamples * sizeof(int16_t));
+  if (!recordBuffer) {
+    Serial.println("[Microphone] ERROR: Memory allocation failed");
+    Serial.printf("[Microphone] Needed: %d bytes\n", totalSamples * sizeof(int16_t));
+    return;
+  }
+  
+  Serial.println("\n[Microphone] === Record & Playback Test ===");
+  Serial.println("[Microphone] Recording for 3 seconds...");
+  Serial.println("[Microphone] Speak now!");
+  
+  // Ensure recording is active
+  bool wasRecording = recording;
+  if (!recording) {
+    startRecording();
+  }
+  
+  // Record audio
+  size_t samplesRecorded = 0;
+  const size_t chunkSize = 512;
+  unsigned long startTime = millis();
+  
+  while (samplesRecorded < totalSamples && (millis() - startTime) < recordDuration) {
+    size_t samplesToRead = min(chunkSize, totalSamples - samplesRecorded);
+    size_t bytesRead = readAudioSamples(&recordBuffer[samplesRecorded], samplesToRead);
+    
+    if (bytesRead > 0) {
+      samplesRecorded += bytesRead / sizeof(int16_t);
+      
+      // Progress indicator
+      if (samplesRecorded % 8000 == 0) {
+        Serial.print(".");
+      }
+    }
+  }
+  
+  Serial.println();
+  Serial.printf("[Microphone] Recorded %d samples (%.1f seconds)\n", 
+                samplesRecorded, (float)samplesRecorded / MIC_SAMPLE_RATE);
+  
+  if (!wasRecording) {
+    stopRecording();
+  }
+  
+  // Small delay before playback
+  delay(500);
+  
+  // Play back through speaker
+  Serial.println("[Speaker] Playing back recording...");
+  
+  // Convert mono to stereo and play
+  const size_t playbackChunkSize = 1024;
+  int16_t stereoBuffer[playbackChunkSize * 2];
+  
+  for (size_t i = 0; i < samplesRecorded; i += playbackChunkSize) {
+    size_t samplesToPlay = min(playbackChunkSize, samplesRecorded - i);
+    
+    // Convert mono to stereo
+    for (size_t j = 0; j < samplesToPlay; j++) {
+      stereoBuffer[j * 2] = recordBuffer[i + j];      // Left channel
+      stereoBuffer[j * 2 + 1] = recordBuffer[i + j];  // Right channel
+    }
+    
+    // Write to speaker I2S (I2S_NUM_1)
+    size_t bytesWritten = 0;
+    i2s_write(I2S_NUM_1, stereoBuffer, samplesToPlay * sizeof(int16_t) * 2, 
+              &bytesWritten, portMAX_DELAY);
+    
+    // Progress indicator
+    if (i % 8000 == 0) {
+      Serial.print(".");
+    }
+  }
+  
+  Serial.println();
+  Serial.println("[Speaker] Playback complete!");
+  
+  // Free buffer
+  free(recordBuffer);
+  Serial.println("[Microphone] Record & Playback test finished");
+}
