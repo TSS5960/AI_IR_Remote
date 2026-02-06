@@ -1,0 +1,31 @@
+# Cloudflare Workers Configuration Template
+# Copy this to wrangler.toml and fill in your Firebase URL
+
+name = "ac-ir-remote-dashboard"
+main = "src/index.js"
+compatibility_date = "2025-12-01"
+
+[observability]
+[observability.logs]
+enabled = true
+head_sampling_rate = 1
+invocation_logs = true
+persist = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[vars]
+FIREBASE_DB_URL = "https://your-project-id-default-rtdb.firebaseio.com"
+FIREBASE_DEVICE_ID = "ESP32_AC_Remote_001"
+FIREBASE_STATUS_PATH = "/devices/{device}/status_history.json"
+FIREBASE_HISTORY_PATH = "/devices/{device}/status_history.json"
+FIREBASE_ALARMS_PATH = "/devices/{device}/alarms.json"
+FIREBASE_HISTORY_ORDER_BY = "timestamp"
+
+# Optional if your DB rules require authentication
+# Set with: wrangler secret put FIREBASE_AUTH
+
+# Optional: OpenAI API Key for ChatGPT integration
+# Set with: wrangler secret put OPENAI_API_KEY
