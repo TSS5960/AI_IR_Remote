@@ -2,6 +2,7 @@
 secrets.h
 firebase_config.h
 cloudflare_dashboard/wrangler.toml
+AWSreomte/
 
 # Node modules
 node_modules/
