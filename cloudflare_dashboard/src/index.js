@@ -1,6 +1,15 @@
+import { handleAIChat } from './ai-handler.js';
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
+    
+    // AI Chat endpoint
+    if (url.pathname === "/api/chat" && request.method === "POST") {
+      return handleAIChat(request, env);
+    }
+    
+    // Config endpoint
     if (url.pathname === "/config.json") {
       return jsonResponse({
         firebase: {

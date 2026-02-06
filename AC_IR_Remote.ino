@@ -7,6 +7,7 @@
 #include "ir_control.h"
 #include "ac_control.h"
 #include "speaker_control.h"
+#include "mic_control.h"
 #include "wifi_manager.h"
 #include "firebase_client.h"
 #include "button_control.h"
@@ -18,12 +19,25 @@
 #include <esp_sntp.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <Adafruit_NeoPixel.h>
+
+// Forward declarations
+void handleCommand(const String& line);
+void printHelp();
+void printStatus();
 
 // power, temperature, mode, fanSpeed, brand
 ACState acState = {false, 24, MODE_COOL, FAN_AUTO, BRAND_GREE};
 
 // Operation mode
 bool isLearning = false;
+
+// NeoPixel RGB LED
+Adafruit_NeoPixel pixels(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
+
+// Wake word LED control
+static unsigned long wakeWordLedOnTime = 0;
+static bool wakeWordLedActive = false;
 
 static bool ntpSynced = false;
 static unsigned long ntpStartMs = 0;
@@ -157,6 +171,29 @@ static void printHeartbeat() {
   Serial.println("[Status] ------------------------------\n");
 }
 
+// ========== Wake Word Callback ==========
+
+/**
+ * Callback function when "Hey Bob" is detected
+ * Lights up the NeoPixel RGB LED for 3 seconds
+ */
+void onWakeWordDetected() {
+  Serial.println("\n*** WAKE WORD DETECTED: Hey Bob! ***");
+  
+  // Turn on NeoPixel RGB LED to white (255, 255, 255)
+  pixels.setPixelColor(0, pixels.Color(255, 255, 255));
+  pixels.show();
+  
+  // Mark LED as active
+  wakeWordLedActive = true;
+  wakeWordLedOnTime = millis();
+  
+  // Optional: Play a confirmation beep
+  playActionTone();
+  
+  Serial.println("[WakeWord] RGB LED ON (White) for 3 seconds");
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.setTimeout(100);
@@ -169,6 +206,12 @@ void setup() {
   Serial.println("========================================");
   Serial.println();
   
+  // Initialize NeoPixel RGB LED
+  pixels.begin();
+  pixels.clear();
+  pixels.show();
+  Serial.println("[System] NeoPixel initialized");
+  
   // Initialize display
   initDisplay();
   showBootScreen();
@@ -179,6 +222,9 @@ void setup() {
   
   // Initialize speaker
   initSpeaker();
+  
+  // Initialize microphone
+  initMicrophone();
   
   // Initialize buttons
   initButtons();
@@ -225,6 +271,15 @@ void setup() {
   // Show help
   printHelp();
   
+  // Initialize wake word detection
+  Serial.println("\n[WakeWord] Setting up voice activation...");
+  setWakeWordCallback(onWakeWordDetected);
+  if (startWakeWordDetection()) {
+    Serial.println("[WakeWord] OK: Listening for 'Hey Bob'");
+  } else {
+    Serial.println("[WakeWord] WARN: Failed to start detection");
+  }
+  
   Serial.println("\n========================================");
   Serial.println("  System Ready!");
   Serial.println("========================================");
@@ -235,6 +290,17 @@ void setup() {
 }
 
 void loop() {
+  // Update wake word detection
+  updateWakeWordDetection();
+  
+  // Handle wake word LED timer (turn off after 3 seconds)
+  if (wakeWordLedActive && (millis() - wakeWordLedOnTime >= 3000)) {
+    pixels.clear();
+    pixels.show();
+    wakeWordLedActive = false;
+    Serial.println("[WakeWord] RGB LED OFF");
+  }
+  
   // Handle WiFi Manager (if in config portal mode)
   handleWiFiManager();
   

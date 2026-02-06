@@ -46,6 +46,15 @@
 #define SPK_BCLK_PIN  15    // Speaker BCLK (bit clock)
 #define SPK_LRCLK_PIN 16    // Speaker LRCLK (left-right clock)
 
+// Microphone pins (INMP441 I2S)
+#define MIC_WS_PIN    4     // Word Select (LRCLK)
+#define MIC_SCK_PIN   5     // Serial Clock (BCLK)
+#define MIC_SD_PIN    6     // Serial Data (DOUT)
+
+// NeoPixel RGB LED pin
+#define NEOPIXEL_PIN  48    // WS2812 RGB LED data pin
+#define NEOPIXEL_COUNT 1    // Number of NeoPixels
+
 // ========== AC Parameters ==========
 
 #define AC_TEMP_MIN   16    // Minimum temperature
@@ -123,6 +132,11 @@ struct ACState {
 
 #define SPEAKER_SAMPLE_RATE   16000   // Sample rate 16kHz
 #define SPEAKER_VOLUME        50      // Default volume (0-100)
+
+// ========== Microphone Parameters ==========
+
+#define MIC_SAMPLE_RATE       16000   // Sample rate 16kHz
+#define MIC_BUFFER_SIZE       512     // Buffer size for audio samples
 
 // ========== NTP Time Configuration ==========
 
