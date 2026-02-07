@@ -23,7 +23,7 @@
 .ac-control-section {
   background: rgba(0, 0, 0, 0.2);
   border-radius: 12px;
-  padding: 24px;
+  padding: 0;
   overflow-y: auto;
   max-height: 750px;
 }
@@ -59,10 +59,34 @@
   padding: 16px;
   border: 2px solid transparent;
   transition: all 0.3s ease;
+  cursor: pointer;
 }
 
 .ac-card.active {
+  border-color: rgba(76, 175, 80, 0.5);
+  background: rgba(76, 175, 80, 0.1);
+}
+
+.ac-card.selected {
   border-color: #4CAF50;
+  background: rgba(76, 175, 80, 0.15);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+  transform: translateX(4px);
+}
+
+.ac-card.selected::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: #4CAF50;
+  border-radius: 8px 0 0 8px;
+}
+
+.ac-card {
+  position: relative;
 }
 
 .ac-card:hover {
@@ -179,6 +203,99 @@
 }
 
 /* AC Control Section */
+.control-header {
+  background: linear-gradient(135deg, rgba(76, 175, 80, 0.2), rgba(66, 165, 70, 0.15));
+  border-bottom: 3px solid rgba(76, 175, 80, 0.4);
+  padding: 24px;
+  margin: 0;
+  border-radius: 12px 12px 0 0;
+}
+
+.control-header-main {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.control-ac-name {
+  margin: 0;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+}
+
+.control-ac-brand {
+  font-size: 0.9rem;
+  color: white;
+  background: rgba(255, 255, 255, 0.2);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-weight: 600;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.control-ac-location {
+  color: rgba(255, 255, 255, 0.9);
+  margin: 0 0 12px 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.control-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.control-status-badge.status-on {
+  background: rgba(76, 175, 80, 0.3);
+  color: #a5f5a8;
+  border: 1px solid rgba(76, 175, 80, 0.5);
+}
+
+.control-status-badge.status-off {
+  background: rgba(158, 158, 158, 0.3);
+  color: #ddd;
+  border: 1px solid rgba(158, 158, 158, 0.5);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  animation: pulse 2s infinite;
+}
+
+.status-on .status-dot {
+  background: #4CAF50;
+  box-shadow: 0 0 8px #4CAF50;
+}
+
+.status-off .status-dot {
+  background: #9e9e9e;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.ac-control-panel > div:not(.control-header) {
+  padding: 0 24px;
+}
+
+.ac-control-panel > div:last-child {
+  padding-bottom: 24px;
+}
+
 .ac-control-panel h2 {
   margin-top: 0;
 }
@@ -198,6 +315,7 @@
 /* Power Control */
 .power-control {
   margin-bottom: 32px;
+  padding-top: 24px;
 }
 
 .power-btn {

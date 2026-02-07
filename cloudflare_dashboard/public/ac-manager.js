@@ -183,8 +183,9 @@ class ACManager {
     }
     
     acArray.forEach(ac => {
+      const isSelected = this.currentAc && this.currentAc.id === ac.id;
       const card = document.createElement('div');
-      card.className = `ac-card ${ac.state.power === 'on' ? 'active' : ''}`;
+      card.className = `ac-card ${ac.state.power === 'on' ? 'active' : ''} ${isSelected ? 'selected' : ''}`;
       card.innerHTML = `
         <div class="ac-card-header">
           <h3>${ac.name}</h3>
@@ -217,6 +218,7 @@ class ACManager {
 
   selectAC(acId) {
     this.currentAc = this.acs[acId];
+    this.renderACList(); // Re-render to show selected state
     this.renderControls();
   }
 
@@ -228,8 +230,17 @@ class ACManager {
     
     controls.innerHTML = `
       <div class="ac-control-panel">
-        <h2>${ac.name}</h2>
-        <p class="ac-location">${ac.location} (${ac.brand})</p>
+        <div class="control-header">
+          <div class="control-header-main">
+            <h2 class="control-ac-name">${ac.name}</h2>
+            <span class="control-ac-brand">${ac.brand}</span>
+          </div>
+          <p class="control-ac-location">📍 ${ac.location}</p>
+          <div class="control-status-badge ${ac.state.power === 'on' ? 'status-on' : 'status-off'}">
+            <span class="status-dot"></span>
+            ${ac.state.power === 'on' ? 'Currently ON' : 'Currently OFF'}
+          </div>
+        </div>
         
         <div class="power-control">
           <button class="power-btn ${ac.state.power === 'on' ? 'on' : 'off'}"
