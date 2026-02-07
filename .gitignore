@@ -54,3 +54,6 @@ yarn-error.log*
 
 # Backup files
 mqtt_broker.cpp.bak
+
+# Documentation guides
+guide/
