@@ -1,7 +1,7 @@
 #include "display.h"
 #include "button_control.h"
 #include "ac_control.h"
-#include "ir_learning.h"
+#include "ir_learning_enhanced.h"
 #include "alarm_manager.h"
 #include "sensors.h"
 #include <WiFi.h>

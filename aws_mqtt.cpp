@@ -8,7 +8,7 @@
 
 #include "aws_mqtt.h"
 #include "ac_control.h"
-#include "ir_learning.h"
+#include "ir_learning_enhanced.h"
 
 WiFiClientSecure net = WiFiClientSecure();
 MQTTClient client = MQTTClient(256);

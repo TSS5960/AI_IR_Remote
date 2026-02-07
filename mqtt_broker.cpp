@@ -7,7 +7,7 @@
 #if USE_MQTT_BROKER
 
 #include "ac_control.h"
-#include "ir_learning.h"
+#include "ir_learning_enhanced.h"
 #include "alarm_manager.h"
 #include <stdio.h>
 
