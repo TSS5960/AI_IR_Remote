@@ -259,7 +259,7 @@ void mqttMessageHandler(String &topic, String &payload) {
     Serial.println("[MQTT] Multi-AC Control Message");
     
     // Extract AC ID (for future multi-AC support)
-    const char* ac_id = root.containsKey("ac_id") ? root["ac_id"] : "unknown";
+    const char* ac_id = root.containsKey("ac_id") ? root["ac_id"].as<const char*>() : "unknown";
     Serial.printf("[MQTT] AC ID: %s\n", ac_id);
     
     // For now, just apply the state to the current AC
@@ -475,7 +475,17 @@ void mqttMessageHandler(String &topic, String &payload) {
       name = nullptr;
     }
 
-    if (addAlarm((uint8_t)hour, (uint8_t)minute, name)) {
+    // Read days parameter (default to all days if not specified)
+    uint8_t days = 0x7F;  // Default to all days
+    if (fields.containsKey("days")) {
+      int daysValue = fields["days"];
+      if (daysValue >= 0 && daysValue <= 127) {
+        days = (uint8_t)daysValue;
+      }
+    }
+    Serial.printf("[MQTT] Alarm days bitmask: 0x%02X\n", days);
+
+    if (addAlarm((uint8_t)hour, (uint8_t)minute, name, days)) {
       publishAlarmsToFirebase("mqtt");
       Serial.println("[MQTT] OK: Alarm added");
     }
@@ -515,7 +525,22 @@ void mqttMessageHandler(String &topic, String &payload) {
     const char* name = readAlarmName(fields);
     Serial.printf("[MQTT] Alarm update index=%d name: %s\n", index, name ? name : "<keep>");
 
-    if (updateAlarm((uint8_t)(index - 1), (uint8_t)hour, (uint8_t)minute, name)) {
+    // Read days parameter (default to current value)
+    uint8_t days = current.days;
+    if (fields.containsKey("days")) {
+      int daysValue = fields["days"];
+      if (daysValue >= 0 && daysValue <= 127) {
+        days = (uint8_t)daysValue;
+      }
+    }
+    Serial.printf("[MQTT] Alarm days bitmask: 0x%02X\n", days);
+
+    if (updateAlarm((uint8_t)(index - 1), (uint8_t)hour, (uint8_t)minute, name, days)) {
+      // Handle enabled status if provided
+      if (fields.containsKey("enabled")) {
+        int enabledValue = fields["enabled"];
+        setAlarmEnabled((uint8_t)(index - 1), enabledValue != 0);
+      }
       publishAlarmsToFirebase("mqtt");
       Serial.println("[MQTT] OK: Alarm updated");
     }

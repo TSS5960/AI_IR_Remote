@@ -25,6 +25,7 @@ struct __attribute__((packed)) AlarmRecord {
   uint8_t hour;
   uint8_t minute;
   uint8_t enabled;
+  uint8_t days;  // Bitmask: bit 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat (0x7F = all days)
   char name[ALARM_NAME_LEN];
 };
 
@@ -240,6 +241,12 @@ void handleAlarmManager() {
       if (lastTriggerMinute[i] == currentMinute) {
         continue;
       }
+      // Check if alarm should ring on this day of week
+      uint8_t dayBit = 1 << timeinfo.tm_wday;  // tm_wday: 0=Sun, 1=Mon, etc.
+      if ((alarm.days & dayBit) == 0) {
+        // Alarm not configured for this day
+        continue;
+      }
       lastTriggerMinute[i] = currentMinute;
       startAlarm(alarm.name, false, i);
       break;
@@ -255,7 +262,7 @@ const char* getActiveAlarmName() {
   return activeAlarmName;
 }
 
-bool addAlarm(uint8_t hour, uint8_t minute, const char* name) {
+bool addAlarm(uint8_t hour, uint8_t minute, const char* name, uint8_t days) {
   if (hour > 23 || minute > 59) {
     Serial.println("[Alarm] FAIL: Invalid time");
     return false;
@@ -269,6 +276,7 @@ bool addAlarm(uint8_t hour, uint8_t minute, const char* name) {
   alarm.hour = hour;
   alarm.minute = minute;
   alarm.enabled = 1;
+  alarm.days = (days == 0) ? 0x7F : days;  // Default to all days if 0
 
   Serial.printf("[Alarm] addAlarm name param: %s\n", (name && name[0]) ? name : "<default>");
   if (name && name[0]) {
@@ -287,7 +295,7 @@ bool addAlarm(uint8_t hour, uint8_t minute, const char* name) {
   return true;
 }
 
-bool updateAlarm(uint8_t index, uint8_t hour, uint8_t minute, const char* name) {
+bool updateAlarm(uint8_t index, uint8_t hour, uint8_t minute, const char* name, uint8_t days) {
   if (index >= alarmStore.count) {
     Serial.println("[Alarm] FAIL: Invalid alarm index");
     return false;
@@ -308,6 +316,7 @@ bool updateAlarm(uint8_t index, uint8_t hour, uint8_t minute, const char* name) 
                 alarm.name);
   alarm.hour = hour;
   alarm.minute = minute;
+  alarm.days = (days == 0) ? 0x7F : days;  // Default to all days if 0
   if (name) {
     copyAlarmName(alarm.name, name);
   }
@@ -319,6 +328,21 @@ bool updateAlarm(uint8_t index, uint8_t hour, uint8_t minute, const char* name) 
                 alarm.hour,
                 alarm.minute,
                 alarm.name);
+  playActionTone();
+  return true;
+}
+
+bool setAlarmEnabled(uint8_t index, bool enabled) {
+  if (index >= alarmStore.count) {
+    Serial.println("[Alarm] FAIL: Invalid alarm index");
+    return false;
+  }
+
+  AlarmRecord& alarm = alarmStore.alarms[index];
+  alarm.enabled = enabled ? 1 : 0;
+  
+  saveAlarmStore();
+  Serial.printf("[Alarm] Alarm #%u %s\n", (unsigned)(index + 1), enabled ? "enabled" : "disabled");
   playActionTone();
   return true;
 }
@@ -353,6 +377,7 @@ bool getAlarmInfo(uint8_t index, AlarmInfo* out) {
   out->hour = alarm.hour;
   out->minute = alarm.minute;
   out->enabled = alarm.enabled != 0;
+  out->days = alarm.days;
   copyAlarmName(out->name, alarm.name);
   return true;
 }
@@ -431,6 +456,7 @@ void publishAlarmsToFirebase(const char* source) {
     snapshot[i].hour = alarm.hour;
     snapshot[i].minute = alarm.minute;
     snapshot[i].enabled = alarm.enabled != 0;
+    snapshot[i].days = alarm.days;
     copyAlarmName(snapshot[i].name, alarm.name);
   }
 

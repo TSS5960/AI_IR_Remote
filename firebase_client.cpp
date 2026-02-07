@@ -280,6 +280,7 @@ bool firebaseWriteAlarms(const AlarmInfo* alarms, int count, const char* source)
     alarmObj["hour"] = alarms[i].hour;
     alarmObj["minute"] = alarms[i].minute;
     alarmObj["enabled"] = alarms[i].enabled;
+    alarmObj["days"] = alarms[i].days;
     alarmObj["name"] = alarms[i].name;
   }
 
