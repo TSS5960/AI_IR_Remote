@@ -262,6 +262,27 @@ void mqttMessageHandler(String &topic, String &payload) {
     const char* ac_id = root.containsKey("ac_id") ? root["ac_id"].as<const char*>() : "unknown";
     Serial.printf("[MQTT] AC ID: %s\n", ac_id);
     
+    // Apply brand setting first (before other commands)
+    if (root.containsKey("brand")) {
+      const char* brandStr = root["brand"];
+      Serial.printf("[MQTT] -> Brand: %s\n", brandStr);
+      
+      ACBrand brand = BRAND_PANASONIC; // Default
+      if (strcasecmp(brandStr, "Daikin") == 0) brand = BRAND_DAIKIN;
+      else if (strcasecmp(brandStr, "Mitsubishi") == 0) brand = BRAND_MITSUBISHI;
+      else if (strcasecmp(brandStr, "Panasonic") == 0) brand = BRAND_PANASONIC;
+      else if (strcasecmp(brandStr, "Gree") == 0 || strcasecmp(brandStr, "Greece") == 0) brand = BRAND_GREE;
+      else if (strcasecmp(brandStr, "Midea") == 0) brand = BRAND_MIDEA;
+      else if (strcasecmp(brandStr, "Haier") == 0) brand = BRAND_HAIER;
+      else if (strcasecmp(brandStr, "Samsung") == 0) brand = BRAND_SAMSUNG;
+      else if (strcasecmp(brandStr, "LG") == 0) brand = BRAND_LG;
+      else if (strcasecmp(brandStr, "Fujitsu") == 0) brand = BRAND_FUJITSU;
+      else if (strcasecmp(brandStr, "Hitachi") == 0) brand = BRAND_HITACHI;
+      
+      setBrand(brand);
+      Serial.printf("[MQTT] Brand set to: %s\n", getBrandName(brand));
+    }
+    
     // For now, just apply the state to the current AC
     // TODO: Load AC-specific configuration based on ac_id
     
