@@ -440,9 +440,6 @@ body {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px rgba(255, 133, 51, 0.1);
 }
-  display: inline-flex;
-  gap: 8px;
-}
 
 .alarm-form {
   display: grid;
