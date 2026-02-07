@@ -551,6 +551,7 @@ void drawIRLearnScreen() {
       break;
       
     case LEARN_WAITING:
+    case LEARN_RECEIVING:
       tft.setTextColor(TFT_YELLOW);
       tft.setCursor(10, yPos);
       tft.println("Learning...");
@@ -561,6 +562,12 @@ void drawIRLearnScreen() {
       tft.println("Point remote & press (3x)");
       break;
       
+    case LEARN_ANALYZING:
+      tft.setTextColor(TFT_CYAN);
+      tft.setCursor(10, yPos);
+      tft.println("Analyzing...");
+      break;
+      
     case LEARN_RECEIVED:
       tft.setTextColor(TFT_GREEN);
       tft.setCursor(10, yPos);
@@ -569,13 +576,29 @@ void drawIRLearnScreen() {
       tft.setTextSize(1);
       tft.setTextColor(TFT_LIGHTGREY);
       tft.setCursor(10, yPos);
-      tft.println("Saving & auto-advance");
+      tft.println("Saving...");
       break;
       
     case LEARN_SAVED:
       tft.setTextColor(TFT_GREENYELLOW);
       tft.setCursor(10, yPos);
       tft.println("Saved!");
+      yPos += 25;
+      tft.setTextSize(1);
+      tft.setTextColor(TFT_LIGHTGREY);
+      tft.setCursor(10, yPos);
+      tft.println("Click to continue");
+      break;
+      
+    case LEARN_ERROR:
+      tft.setTextColor(TFT_RED);
+      tft.setCursor(10, yPos);
+      tft.println("Error!");
+      yPos += 25;
+      tft.setTextSize(1);
+      tft.setTextColor(TFT_LIGHTGREY);
+      tft.setCursor(10, yPos);
+      tft.println("Click to retry");
       break;
   }
   
@@ -584,10 +607,18 @@ void drawIRLearnScreen() {
   tft.setTextSize(1);
   tft.setTextColor(TFT_LIGHTGREY);
   tft.setCursor(5, yPos);
-  tft.println("JOY UP/DOWN: SIGNAL +/-");
+  
+  if (state == LEARN_SAVED) {
+    tft.println("CLICK: NEXT SIGNAL");
+  } else if (state == LEARN_WAITING || state == LEARN_RECEIVING) {
+    tft.println("PRESS REMOTE BUTTON 3x");
+  } else {
+    tft.println("CLICK: START LEARNING");
+  }
+  
   yPos += 12;
   tft.setCursor(5, yPos);
-  tft.println("CLICK: START LEARNING");
+  tft.println("JOY UP/DOWN: SIGNAL +/-");
   yPos += 12;
   tft.setCursor(5, yPos);
   tft.println("JOY L/R: SWITCH SCREEN");

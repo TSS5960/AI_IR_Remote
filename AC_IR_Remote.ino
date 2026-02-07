@@ -29,9 +29,6 @@ void printStatus();
 // power, temperature, mode, fanSpeed, brand
 ACState acState = {false, 24, MODE_COOL, FAN_AUTO, BRAND_GREE};
 
-// Operation mode
-bool isLearning = false;
-
 // NeoPixel RGB LED
 Adafruit_NeoPixel pixels(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
@@ -233,8 +230,8 @@ void setup() {
   // Initialize alarms (persistent storage)
   initAlarmManager();
   
-  // Initialize IR learning
-  initIRLearning();
+  // Initialize IR learning (Enhanced)
+  initIRLearningEnhanced();
 
   // Set default screen to Clock
   setScreen(SCREEN_CLOCK);
@@ -321,7 +318,29 @@ void loop() {
   
   // Check IR learning (if on IR learning screen)
   if (getCurrentScreen() == SCREEN_IR_LEARN) {
-    checkIRReceive();
+    static bool learningActive = false;
+    LearnState currentState = getLearnState();
+    
+    // Log when learning starts
+    if (!learningActive && (currentState == LEARN_WAITING || currentState == LEARN_RECEIVING)) {
+      Serial.println("[System] ✓ IR learning active, checkIRReceiveEnhanced() will be called");
+      learningActive = true;
+    } else if (learningActive && currentState == LEARN_IDLE) {
+      learningActive = false;
+    }
+    
+    if (checkIRReceiveEnhanced()) {
+      // Learning complete (success or error) - auto-save if successful
+      LearnState state = getLearnState();
+      if (state == LEARN_RECEIVED) {
+        Serial.println("[System] Auto-saving learned signal...");
+        saveLearnedSignal();
+        updateScreenDisplay();
+      } else if (state == LEARN_ERROR) {
+        Serial.println("[System] Learning failed with error");
+        updateScreenDisplay();
+      }
+    }
   }
   
   // Update clock screen animation if currently on clock screen
@@ -350,11 +369,6 @@ void loop() {
       firebaseQueueStatus(getACState(), data, "periodic");
     }
     lastSensorRead = millis();
-  }
-  
-  // Learning mode: check for IR signals
-  if (isLearning) {
-    checkReceivedSignal();
   }
   
   // Check serial commands
@@ -402,6 +416,43 @@ void handleCommand(const String& line) {
     return;
   }
   
+  if (lineLower == "irtest") {
+    testIRReceiver();
+    return;
+  }
+  
+  if (lineLower == "irlist") {
+    printAllSignals();
+    return;
+  }
+  
+  if (lineLower == "irmon" || lineLower == "irmonitor") {
+    monitorIRSignals(0);  // Monitor until user presses any key
+    return;
+  }
+  
+  if (lineLower == "irverify" || lineLower == "ircheck") {
+    verifyEEPROMData();
+    return;
+  }
+  
+  if (lineLower == "ircapture") {
+    Serial.println("\n[IR] Press remote button NOW (5 second timeout)...");
+    irrecv.resume();
+    unsigned long start = millis();
+    while (millis() - start < 5000) {
+      decode_results results;
+      if (irrecv.decode(&results)) {
+        printDetailedSignal(&results);
+        irrecv.resume();
+        return;
+      }
+      delay(10);
+    }
+    Serial.println("[IR] Timeout - no signal received");
+    return;
+  }
+  
   if (lineLower == "voice" || lineLower == "vlevel" || lineLower == "mic") {
     testMicrophoneLevel();
     return;
@@ -410,6 +461,22 @@ void handleCommand(const String& line) {
   if (lineLower == "repeat" || lineLower == "echo") {
     recordAndPlayback();
     return;
+  }
+  
+  // Check for IR signal commands (I1-I40)
+  if (lineLower.startsWith("i") && lineLower.length() >= 2) {
+    String numStr = lineLower.substring(1);
+    int signalNum = numStr.toInt();
+    if (signalNum >= 1 && signalNum <= 40) {
+      int signalIndex = signalNum - 1;  // Convert to 0-based index
+      Serial.printf("[IR] Sending learned signal I%d (index %d)...\n", signalNum, signalIndex);
+      if (sendSignal(signalIndex)) {
+        Serial.println("[IR] ✓ Signal sent successfully");
+      } else {
+        Serial.println("[IR] ✗ Signal not learned or failed to send");
+      }
+      return;
+    }
   }
 
   // Single character commands
@@ -443,20 +510,6 @@ void handleCommand(const String& line) {
       
     case '9':  // Switch brand
       setBrand((ACBrand)((acState.brand + 1) % BRAND_COUNT));
-      break;
-      
-    case 'l':  // Enter learning mode
-      if (!isLearning) {
-        isLearning = true;
-        startLearnMode();
-      }
-      break;
-      
-    case 'q':  // Exit learning mode
-      if (isLearning) {
-        isLearning = false;
-        stopLearnMode();
-      }
       break;
       
     case 's':  // Switch screen (manual test)
@@ -588,12 +641,20 @@ void printHelp() {
   Serial.println("  ----------------------------------------");
   Serial.println("  s - Switch screen (manual test)");
   Serial.println("  test - Test speaker");
+  Serial.println("  irtest - Test IR receiver hardware");
+  Serial.println("  irmon - Monitor IR signals (continuous)");
+  Serial.println("  ircapture - Capture ONE signal with FULL detail");
+  Serial.println("  irlist - List all learned IR signals");
+  Serial.println("  irverify - Verify EEPROM data integrity");
   Serial.println("  m - Read sensors (PIR, DHT11, GY-30)");
-  Serial.println("  l - Enter IR learning mode");
-  Serial.println("  q - Exit special mode");
   Serial.println("  w - Show WiFi/Firebase/MQTT status");
   Serial.println("  r - Reset WiFi configuration");
   Serial.println("  h - Show this help");
+  Serial.println();
+  Serial.println("  Learned IR Signals:");
+  Serial.println("  ----------------------------------------");
+  Serial.println("  I1-I40 - Send learned IR signal 1-40");
+  Serial.println("  Example: I1 (sends signal 1)");
   Serial.println();
   Serial.println("  Wake Word (Voice Control):");
   Serial.println("  ----------------------------------------");

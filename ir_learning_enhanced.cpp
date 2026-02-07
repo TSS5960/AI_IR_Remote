@@ -7,6 +7,7 @@
 #include <EEPROM.h>
 #include <ArduinoJson.h>
 #include <IRsend.h>  // Required for IRsend class
+#include <esp_task_wdt.h>  // Watchdog timer
 
 #define EEPROM_SIZE 4096
 #define EEPROM_MAGIC 0xABCE  // Different magic for enhanced version
@@ -44,6 +45,24 @@ void initIRLearningEnhanced() {
   Serial.println("[IR Learn+] Initializing ENHANCED IR learning module...");
   
   EEPROM.begin(EEPROM_SIZE);
+  
+  // Calculate and display memory usage
+  size_t buttonSize = sizeof(LearnedButton);
+  size_t deviceSize = sizeof(LearnedDevice);
+  size_t totalSize = MAX_LEARNED_DEVICES * deviceSize + sizeof(uint16_t) + sizeof(uint8_t);
+  
+  Serial.printf("[IR Learn+] Button size: %d bytes\n", buttonSize);
+  Serial.printf("[IR Learn+] Device size: %d bytes\n", deviceSize);
+  Serial.printf("[IR Learn+] Total storage: %d / %d bytes (%.1f%%)\n", 
+                totalSize, EEPROM_SIZE, (totalSize * 100.0) / EEPROM_SIZE);
+  
+  if (totalSize > EEPROM_SIZE) {
+    Serial.println("[IR Learn+] ✗ ERROR: Storage exceeds EEPROM size!");
+    Serial.println("[IR Learn+]   Reduce MAX_IR_BUFFER_SIZE in ir_learning_enhanced.h");
+    return;
+  }
+  
+  Serial.println("[IR Learn+] ✓ Memory check passed");
   
   // Initialize all devices
   for (int i = 0; i < MAX_LEARNED_DEVICES; i++) {
@@ -259,6 +278,7 @@ void startLearningSignal(int signalIndex, const char* signalName) {
   session.currentDeviceIndex = deviceIdx;
   session.currentButtonIndex = buttonIdx;
   session.captureCount = 0;
+  session.timeout = 30000;  // 30 second timeout - ensure it's always set
   session.state = LEARN_WAITING;
   session.waitStartTime = millis();
   
@@ -277,6 +297,11 @@ void startLearningSignal(int signalIndex, const char* signalName) {
   Serial.println("║ 3. Keep pressing until 3 captures done");
   Serial.println("╚════════════════════════════════════════╝\n");
   
+  Serial.printf("[IR Learn+] 🔧 Calling irrecv.resume() to enable receiver...\n");
+  Serial.printf("[IR Learn+] 🔧 IR receiver pin: GPIO%d\n", IR_RX_PIN);
+  Serial.printf("[IR Learn+] 🔧 State set to: LEARN_WAITING (%d)\n", session.state);
+  Serial.printf("[IR Learn+] 🔧 Timeout set to: %lu ms\n", session.timeout);
+  Serial.printf("[IR Learn+] 🔧 Wait start time: %lu\n", session.waitStartTime);
   irrecv.resume();
 }
 
@@ -285,22 +310,34 @@ void startLearningSignal(int signalIndex, const char* signalName) {
  * Returns true when learning is complete (success or failure)
  */
 bool checkIRReceiveEnhanced() {
+  static unsigned long lastDebugMs = 0;
+  
   if (session.state != LEARN_WAITING && session.state != LEARN_RECEIVING) {
     return false;
   }
   
+  // Debug output every 2 seconds
+  if (millis() - lastDebugMs > 2000) {
+    Serial.printf("[IR Learn+] 🔍 Checking... State: %d, Elapsed: %lu ms\n", 
+                  session.state, millis() - session.waitStartTime);
+    Serial.printf("[IR Learn+]    Timeout setting: %lu ms\n", session.timeout);
+    lastDebugMs = millis();
+  }
+  
   // Check timeout
-  if (millis() - session.waitStartTime > session.timeout) {
-    Serial.println("\n[IR Learn+] ✗ Timeout - no signal received");
+  unsigned long elapsed = millis() - session.waitStartTime;
+  if (elapsed > session.timeout) {
+    Serial.printf("\n[IR Learn+] ✗ Timeout - no signal received (elapsed: %lu ms, timeout: %lu ms)\n", 
+                  elapsed, session.timeout);
     session.state = LEARN_ERROR;
     return true;
   }
   
   decode_results results;
   if (irrecv.decode(&results)) {
-    // Skip repeat codes on first capture
-    if (session.captureCount == 0 && isRepeatSignal(results)) {
-      Serial.println("[IR Learn+] ⟳ Skipping repeat code, press button again");
+    // Skip repeat codes on all captures (not just first)
+    if (isRepeatSignal(results)) {
+      Serial.println("[IR Learn+] ⟳ Skipping repeat code, release button and press again");
       irrecv.resume();
       return false;
     }
@@ -429,16 +466,287 @@ void saveLearnedSignal() {
   saveDeviceIncremental(session.currentDeviceIndex);
   
   Serial.printf("[IR Learn+] ✓ Signal %d saved to EEPROM\n", currentSignalIndex + 1);
+  Serial.println("[IR Learn+] 👉 Click joystick to continue to next signal");
+  
   session.state = LEARN_SAVED;
   
-  delay(1000);
-  session.state = LEARN_IDLE;
+  // Note: State will remain LEARN_SAVED until user clicks to advance
+  // This allows time for user to see the success message
 }
 
 void cancelLearning() {
   session.state = LEARN_IDLE;
   session.captureCount = 0;
   Serial.println("[IR Learn+] Learning cancelled");
+}
+
+void resetLearningState() {
+  session.state = LEARN_IDLE;
+  session.captureCount = 0;
+  Serial.println("[IR Learn+] Learning state reset to IDLE");
+}
+
+// === IR Monitoring Functions ===
+
+/**
+ * Continuous IR monitoring mode - shows all received signals in real-time
+ * Returns true if user wants to exit (press any key)
+ */
+bool monitorIRSignals(unsigned long duration) {
+  Serial.println("\n╔════════════════════════════════════════╗");
+  Serial.println("║ IR Signal Monitor");
+  Serial.println("╠════════════════════════════════════════╣");
+  Serial.println("║ Monitoring all IR signals...");
+  if (duration > 0) {
+    Serial.printf("║ Duration: %lu seconds\n", duration / 1000);
+  } else {
+    Serial.println("║ Press any key to stop");
+  }
+  Serial.println("╚════════════════════════════════════════╝\n");
+  
+  // IR receiver is already enabled at startup - just resume
+  irrecv.resume();
+  
+  unsigned long startTime = millis();
+  unsigned long lastSignalTime = 0;
+  int signalCount = 0;
+  
+  while (true) {
+    // Check for exit
+    if (Serial.available()) {
+      while (Serial.available()) Serial.read();  // Clear buffer
+      Serial.println("\n[Monitor] Stopped by user\n");
+      return true;
+    }
+    
+    // Check timeout
+    if (duration > 0 && (millis() - startTime > duration)) {
+      Serial.printf("\n[Monitor] Finished - %d signals received\n\n", signalCount);
+      return false;
+    }
+    
+    // Check for IR signal
+    decode_results results;
+    if (irrecv.decode(&results)) {
+      signalCount++;
+      unsigned long now = millis();
+      unsigned long timeSinceLast = (lastSignalTime > 0) ? (now - lastSignalTime) : 0;
+      lastSignalTime = now;
+      
+      Serial.println("\n╔════════════════════════════════════════╗");
+      Serial.printf("║ Signal #%d | Time: %lu ms | Gap: %lu ms\n", 
+                    signalCount, now - startTime, timeSinceLast);
+      Serial.println("╚════════════════════════════════════════╝");
+      
+      // Protocol info
+      Serial.printf("Protocol:  %s\n", typeToString(results.decode_type).c_str());
+      
+      // Value (if decoded)
+      if (results.decode_type != UNKNOWN && results.value != 0) {
+        Serial.printf("Value:     0x%llX\n", results.value);
+        Serial.printf("Bits:      %d\n", results.bits);
+        if (results.address != 0) {
+          Serial.printf("Address:   0x%04X\n", results.address);
+        }
+        if (results.command != 0) {
+          Serial.printf("Command:   0x%04X\n", results.command);
+        }
+      }
+      
+      // Raw data info
+      Serial.printf("Raw Length: %d samples\n", results.rawlen);
+      
+      // Check if this is a repeat signal
+      if (results.repeat || 
+          (results.decode_type != UNKNOWN && results.value == 0xFFFFFFFFFFFFFFFF)) {
+        Serial.println("Type:      REPEAT CODE");
+      }
+      
+      // Show raw timing preview
+      if (results.rawlen > 0) {
+        Serial.print("Raw Preview: ");
+        int displayLen = min(10, (int)results.rawlen);
+        for (int i = 1; i < displayLen; i++) {
+          Serial.printf("%d", results.rawbuf[i] * kRawTick);
+          if (i < displayLen - 1) Serial.print(", ");
+        }
+        if (results.rawlen > 10) {
+          Serial.printf("... (+%d)", results.rawlen - 10);
+        }
+        Serial.println();
+        
+        // Option to show full raw data
+        Serial.println("\n>>> Type 'f' for FULL raw data, any other key to continue <<<");
+      }
+      
+      Serial.println();
+      
+      // Check if user wants detailed view
+      unsigned long waitStart = millis();
+      bool showDetails = false;
+      while (millis() - waitStart < 2000) {  // Wait 2 seconds for input
+        if (Serial.available()) {
+          char input = Serial.read();
+          while (Serial.available()) Serial.read();  // Clear buffer
+          
+          if (input == 'f' || input == 'F') {
+            showDetails = true;
+            break;
+          } else if (input == 'q' || input == 'Q') {
+            Serial.println("\n[Monitor] Stopped by user\n");
+            irrecv.resume();
+            return true;
+          } else {
+            break;  // Any other key continues
+          }
+        }
+        delay(10);
+      }
+      
+      if (showDetails) {
+        printDetailedSignal(&results);
+      }
+      
+      irrecv.resume();
+      delay(10);
+    }
+    
+    delay(10);
+  }
+}
+
+/**
+ * Print detailed signal analysis for troubleshooting
+ */
+void printDetailedSignal(const decode_results* results) {
+  Serial.println("\n╔══════════════════════════════════ DETAILED ANALYSIS ══════════════════════════════════╗");
+  
+  // Full protocol details
+  Serial.println("║ PROTOCOL INFORMATION:");
+  Serial.printf("║   Type: %s\n", typeToString(results->decode_type).c_str());
+  if (results->decode_type != UNKNOWN) {
+    Serial.printf("║   Value: 0x%llX\n", results->value);
+    Serial.printf("║   Bits: %d\n", results->bits);
+    if (results->address) Serial.printf("║   Address: 0x%04X\n", results->address);
+    if (results->command) Serial.printf("║   Command: 0x%04X\n", results->command);
+  }
+  
+  // Raw timing data - FULL
+  Serial.println("║");
+  Serial.println("║ FULL RAW TIMING DATA:");
+  Serial.printf("║   Total samples: %d\n", results->rawlen);
+  Serial.println("║   Format: [index] Mark/Space µs");
+  Serial.println("║");
+  
+  for (uint16_t i = 1; i < results->rawlen; i++) {
+    uint16_t timing = results->rawbuf[i] * kRawTick;
+    const char* type = (i % 2 == 1) ? "MARK " : "SPACE";
+    
+    Serial.printf("║   [%3d] %s %5d", i, type, timing);
+    
+    // Visual bar representation
+    Serial.print("  |");
+    int barLen = timing / 100;  // Scale: 100us = 1 char
+    barLen = min(barLen, 60);   // Max 60 chars
+    for (int j = 0; j < barLen; j++) {
+      Serial.print((i % 2 == 1) ? "█" : "░");
+    }
+    Serial.println();
+    
+    // Add line breaks every 10 entries for readability
+    if (i % 10 == 0 && i < results->rawlen - 1) {
+      Serial.println("║");
+    }
+  }
+  
+  // Summary statistics
+  Serial.println("║");
+  Serial.println("║ TIMING STATISTICS:");
+  
+  // Calculate total duration
+  unsigned long totalDuration = 0;
+  for (uint16_t i = 1; i < results->rawlen; i++) {
+    totalDuration += results->rawbuf[i] * kRawTick;
+  }
+  Serial.printf("║   Total duration: %lu µs (%.2f ms)\n", totalDuration, totalDuration / 1000.0);
+  
+  // Find longest mark and space
+  uint16_t longestMark = 0, longestSpace = 0;
+  for (uint16_t i = 1; i < results->rawlen; i++) {
+    uint16_t timing = results->rawbuf[i] * kRawTick;
+    if (i % 2 == 1) {
+      longestMark = max(longestMark, timing);
+    } else {
+      longestSpace = max(longestSpace, timing);
+    }
+  }
+  Serial.printf("║   Longest MARK:  %d µs\n", longestMark);
+  Serial.printf("║   Longest SPACE: %d µs\n", longestSpace);
+  
+  // Arduino code snippet for reproduction
+  Serial.println("║");
+  Serial.println("║ ARDUINO CODE (copy for replay):");
+  Serial.println("║");
+  Serial.printf("║   uint16_t rawData[%d] = {\n", results->rawlen - 1);
+  Serial.print("║     ");
+  for (uint16_t i = 1; i < results->rawlen; i++) {
+    Serial.printf("%d", results->rawbuf[i] * kRawTick);
+    if (i < results->rawlen - 1) {
+      Serial.print(", ");
+      if (i % 8 == 0) Serial.print("\n║     ");
+    }
+  }
+  Serial.println("\n║   };");
+  Serial.printf("║   irsend.sendRaw(rawData, %d, 38);  // 38kHz\n", results->rawlen - 1);
+  
+  Serial.println("╚════════════════════════════════════════════════════════════════════════════════════════╝\n");
+}
+
+// === Test Functions ===
+
+/**
+ * Test if IR receiver is working
+ * Call this to verify hardware before learning
+ */
+void testIRReceiver() {
+  Serial.println("\n╔════════════════════════════════════════╗");
+  Serial.println("║ IR Receiver Test Mode");
+  Serial.println("╠════════════════════════════════════════╣");
+  Serial.println("║ Press any button on your remote");
+  Serial.println("║ Waiting for 10 seconds...");
+  Serial.println("╚════════════════════════════════════════╝\n");
+  
+  // IR receiver is already enabled at startup - just resume
+  irrecv.resume();
+  
+  unsigned long startTime = millis();
+  bool received = false;
+  
+  while (millis() - startTime < 10000) {
+    decode_results testResults;
+    if (irrecv.decode(&testResults)) {
+      Serial.println("\n✓ IR RECEIVER IS WORKING!");
+      Serial.printf("  Protocol: %s\n", typeToString(testResults.decode_type).c_str());
+      Serial.printf("  Value: 0x%llX\n", testResults.value);
+      Serial.printf("  Samples: %d\n", testResults.rawlen);
+      received = true;
+      irrecv.resume();
+      delay(1000);  // Give time for user to see message
+      break;
+    }
+    delay(10);
+  }
+  
+  if (!received) {
+    Serial.println("\n✗ NO IR SIGNAL RECEIVED!");
+    Serial.println("  Check:");
+    Serial.println("  - IR receiver is connected to GPIO9");
+    Serial.println("  - Remote has batteries");
+    Serial.println("  - Remote is pointed at receiver");
+    Serial.println("  - IR LED on remote is working");
+  }
+  
+  Serial.println();
 }
 
 // === Playback Functions ===
@@ -463,6 +771,8 @@ bool sendSignal(int signalIndex) {
   Serial.printf("\n[IR Learn+] 📤 Sending Signal %d: %s\n", 
                 signalIndex + 1, button->buttonName);
   Serial.printf("             Protocol: %s\n", typeToString(button->protocol).c_str());
+  Serial.printf("             Value: 0x%llX\n", button->value);
+  Serial.printf("             Bits: %d\n", button->bits);
   Serial.printf("             Hardware frequency: %d kHz\n", IR_HARDWARE_FREQUENCY);
   
   if (button->metadata.frequencyMismatch) {
@@ -470,10 +780,66 @@ bool sendSignal(int signalIndex) {
                   button->metadata.detectedCarrierFreq);
   }
   
-  // Always use hardware frequency (cannot be changed in software!)
-  irsend.sendRaw(button->rawData, button->rawDataLen, IR_HARDWARE_FREQUENCY);
+  // Use protocol-specific send for better reliability
+  bool sent = false;
+  
+  switch (button->protocol) {
+    case decode_type_t::NEC:
+      if (button->bits > 0 && button->value != 0xFFFFFFFFFFFFFFFF) {
+        Serial.println("[IR Learn+] Using NEC protocol send");
+        irsend.sendNEC(button->value, button->bits, 2);  // Send twice for better reliability
+        sent = true;
+      }
+      break;
+      
+    case decode_type_t::SONY:
+      if (button->bits > 0) {
+        Serial.println("[IR Learn+] Using SONY protocol send");
+        irsend.sendSony(button->value, button->bits);
+        sent = true;
+      }
+      break;
+      
+    case decode_type_t::RC5:
+      if (button->bits > 0) {
+        Serial.println("[IR Learn+] Using RC5 protocol send");
+        irsend.sendRC5(button->value, button->bits);
+        sent = true;
+      }
+      break;
+      
+    case decode_type_t::RC6:
+      if (button->bits > 0) {
+        Serial.println("[IR Learn+] Using RC6 protocol send");
+        irsend.sendRC6(button->value, button->bits);
+        sent = true;
+      }
+      break;
+      
+    default:
+      // Will fall through to raw send
+      break;
+  }
+  
+  // Fallback to raw send if protocol send not used
+  if (!sent && button->rawDataLen > 0) {
+    Serial.println("[IR Learn+] Using raw timing data");
+    Serial.printf("             Raw data length: %d samples\n", button->rawDataLen);
+    irsend.sendRaw(button->rawData, button->rawDataLen, IR_HARDWARE_FREQUENCY);
+    sent = true;
+  }
+  
+  if (!sent) {
+    Serial.println("[IR Learn+] ✗ No valid data to send");
+    return false;
+  }
+  
+  // Resume receiver after sending (transmission pauses it)
+  delay(100);
+  irrecv.resume();
   
   Serial.println("[IR Learn+] ✓ Signal transmitted");
+  Serial.println("[IR Learn+]   IR receiver resumed");
   return true;
 }
 
@@ -663,19 +1029,71 @@ void saveDeviceIncremental(int deviceIndex) {
   
   Serial.printf("[IR Learn+] 💾 Saving device %d...\n", deviceIndex);
   
+  // Feed watchdog to prevent reset during long operation
+  esp_task_wdt_reset();
+  
   // Calculate address for this device
   int addr = EEPROM_START_ADDR + sizeof(uint16_t) + sizeof(uint8_t);
   addr += deviceIndex * (sizeof(LearnedDevice));
   
+  // Check if size fits in EEPROM
+  size_t deviceSize = sizeof(LearnedDevice);
+  size_t requiredSize = addr + deviceSize;
+  
+  if (requiredSize > EEPROM_SIZE) {
+    Serial.printf("[IR Learn+] ✗ ERROR: Device too large! Need %d bytes, have %d\n", 
+                  requiredSize, EEPROM_SIZE);
+    Serial.printf("[IR Learn+]   Device size: %d bytes\n", deviceSize);
+    return;
+  }
+  
   // Save entire device structure
   EEPROM.put(addr, learnedDevices[deviceIndex]);
-  EEPROM.commit();
   
-  Serial.println("[IR Learn+] ✓ Device saved");
+  // Feed watchdog again before commit
+  esp_task_wdt_reset();
+  
+  // Commit with retry logic and watchdog feeding
+  bool saved = false;
+  for (int retry = 0; retry < 3; retry++) {
+    esp_task_wdt_reset();  // Feed watchdog before each attempt
+    
+    if (EEPROM.commit()) {
+      saved = true;
+      break;
+    }
+    delay(100);
+    Serial.printf("[IR Learn+] Retry %d...\n", retry + 1);
+  }
+  
+  if (saved) {
+    Serial.println("[IR Learn+] ✓ Device saved to EEPROM");
+    
+    // Feed watchdog before verification
+    esp_task_wdt_reset();
+    
+    // Verify by reading back
+    LearnedDevice verify;
+    EEPROM.get(addr, verify);
+    if (verify.hasData == learnedDevices[deviceIndex].hasData && 
+        verify.buttonCount == learnedDevices[deviceIndex].buttonCount) {
+      Serial.println("[IR Learn+] ✓ Verification passed");
+    } else {
+      Serial.println("[IR Learn+] ⚠ Verification failed - data may be corrupted!");
+    }
+  } else {
+    Serial.println("[IR Learn+] ✗ EEPROM commit FAILED after 3 retries!");
+  }
+  
+  delay(50);  // Give EEPROM time to complete write
+  esp_task_wdt_reset();  // Final watchdog feed
 }
 
 void saveLearnedDevicesEnhanced() {
   Serial.println("[IR Learn+] 💾 Saving all devices...");
+  
+  // Feed watchdog
+  esp_task_wdt_reset();
   
   // Write magic and version
   uint16_t magic = EEPROM_MAGIC;
@@ -684,15 +1102,26 @@ void saveLearnedDevicesEnhanced() {
   EEPROM.put(EEPROM_START_ADDR, magic);
   EEPROM.put(EEPROM_START_ADDR + sizeof(uint16_t), version);
   
-  // Save all devices
+  // Save all devices with watchdog feeding
   int addr = EEPROM_START_ADDR + sizeof(uint16_t) + sizeof(uint8_t);
   for (int i = 0; i < MAX_LEARNED_DEVICES; i++) {
+    esp_task_wdt_reset();  // Feed watchdog for each device
     EEPROM.put(addr, learnedDevices[i]);
     addr += sizeof(LearnedDevice);
+    delay(10);  // Small delay between writes
   }
   
-  EEPROM.commit();
-  Serial.println("[IR Learn+] ✓ All devices saved");
+  // Feed watchdog before commit
+  esp_task_wdt_reset();
+  
+  if (EEPROM.commit()) {
+    Serial.println("[IR Learn+] ✓ All devices saved to EEPROM");
+  } else {
+    Serial.println("[IR Learn+] ✗ EEPROM commit FAILED!");
+  }
+  
+  delay(100);  // Give EEPROM time to complete write
+  esp_task_wdt_reset();  // Final watchdog feed
 }
 
 void loadLearnedDevicesEnhanced() {
@@ -730,10 +1159,69 @@ void loadLearnedDevicesEnhanced() {
       Serial.printf("[IR Learn+] ✓ Device %d: %s (%d buttons)\n", 
                     i + 1, learnedDevices[i].deviceName, learnedDevices[i].buttonCount);
       loadedCount++;
+      
+      // Show which buttons are learned
+      for (int j = 0; j < MAX_BUTTONS_PER_DEVICE; j++) {
+        if (learnedDevices[i].buttons[j].hasData) {
+          int signalNum = i * MAX_BUTTONS_PER_DEVICE + j + 1;
+          Serial.printf("[IR Learn+]   - I%d: %s (Protocol: %s, Length: %d)\n",
+                       signalNum,
+                       learnedDevices[i].buttons[j].buttonName,
+                       typeToString(learnedDevices[i].buttons[j].protocol).c_str(),
+                       learnedDevices[i].buttons[j].rawDataLen);
+        }
+      }
     }
   }
   
-  Serial.printf("[IR Learn+] ✓ Loaded %d devices\n", loadedCount);
+  if (loadedCount == 0) {
+    Serial.println("[IR Learn+] No learned devices found");
+  } else {
+    Serial.printf("[IR Learn+] ✓ Loaded %d devices with learned signals\n", loadedCount);
+  }
+}
+
+// === EEPROM Verification ===
+
+void verifyEEPROMData() {
+  Serial.println("\n╔════════════════════════════════════════╗");
+  Serial.println("║ EEPROM Data Verification");
+  Serial.println("╚════════════════════════════════════════╝\n");
+  
+  // Check magic and version
+  uint16_t magic;
+  uint8_t version;
+  EEPROM.get(EEPROM_START_ADDR, magic);
+  EEPROM.get(EEPROM_START_ADDR + sizeof(uint16_t), version);
+  
+  Serial.printf("Magic:     0x%04X (expected: 0x%04X) %s\n", 
+                magic, EEPROM_MAGIC, (magic == EEPROM_MAGIC) ? "✓" : "✗");
+  Serial.printf("Version:   %d (expected: %d) %s\n", 
+                version, EEPROM_VERSION, (version == EEPROM_VERSION) ? "✓" : "✗");
+  Serial.printf("EEPROM Size: %d bytes\n", EEPROM_SIZE);
+  Serial.printf("Start Addr:  %d\n", EEPROM_START_ADDR);
+  Serial.printf("Device Size: %d bytes\n", sizeof(LearnedDevice));
+  Serial.printf("Button Size: %d bytes\n", sizeof(LearnedButton));
+  Serial.println();
+  
+  if (magic != EEPROM_MAGIC) {
+    Serial.println("✗ Invalid magic - EEPROM not initialized!");
+    return;
+  }
+  
+  // Count learned signals
+  int totalSignals = 0;
+  for (int i = 0; i < MAX_LEARNED_DEVICES; i++) {
+    for (int j = 0; j < MAX_BUTTONS_PER_DEVICE; j++) {
+      if (learnedDevices[i].buttons[j].hasData) {
+        totalSignals++;
+      }
+    }
+  }
+  
+  Serial.printf("Total Learned Signals: %d / %d\n", totalSignals, TOTAL_SIGNALS);
+  Serial.printf("Storage Used: ~%d bytes\n\n", 
+                sizeof(uint16_t) + sizeof(uint8_t) + (MAX_LEARNED_DEVICES * sizeof(LearnedDevice)));
 }
 
 // === Diagnostic Functions ===
