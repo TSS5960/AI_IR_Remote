@@ -1,4 +1,4 @@
-# ESP32-S3 Smart AC Remote Control with Voice Integration(not up to date yet ww, more function added)
+# ESP32-S3 Smart AC Remote Control with Voice Integration(Not Up to data more function was added)
 
 An intelligent air conditioner remote control system based on ESP32-S3 with voice recording, IR learning, cloud connectivity, and multi-sensor integration.
 
