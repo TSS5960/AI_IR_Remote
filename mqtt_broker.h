@@ -23,6 +23,9 @@ bool connectMqttBroker();
 // Publish AC status to MQTT broker
 void publishMqttStatus(const ACState& state);
 
+// Publish IR signals to Firebase (for web dashboard)
+void publishIRSignalsToFirebase();
+
 // Handle incoming MQTT messages
 void mqttMessageHandler(String &topic, String &payload);
 
@@ -40,6 +43,7 @@ String getMqttStatus();
 inline void initMqttBroker() {}
 inline bool connectMqttBroker() { return false; }
 inline void publishMqttStatus(const ACState&) {}
+inline void publishIRSignalsToFirebase() {}
 inline void mqttMessageHandler(String &, String &) {}
 inline void handleMqttBroker() {}
 inline bool isMqttConnected() { return false; }

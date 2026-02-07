@@ -546,7 +546,7 @@ void drawIRLearnScreen() {
   tft.printf("Total Learned: %d/%d", learnedCount, TOTAL_SIGNALS);
   
   // Learning state
-  yPos = 140;
+  yPos = 160;
   tft.setTextSize(2);
   
   switch(state) {
