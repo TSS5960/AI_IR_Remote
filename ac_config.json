@@ -1,0 +1,31 @@
+{
+  "air_conditioners": {
+    "living_room": {
+      "id": "living_room",
+      "name": "Living Room AC",
+      "brand": "Panasonic",
+      "location": "Living Room",
+      "enabled": true,
+      "state": {
+        "power": "off",
+        "temperature": 24,
+        "mode": "auto",
+        "fan_speed": "auto"
+      },
+      "automation": {
+        "humidity_threshold": 65,
+        "light_threshold": 30,
+        "auto_on": false,
+        "auto_off": false
+      },
+      "last_updated": 0
+    }
+  },
+  "default_settings": {
+    "temperature": 24,
+    "mode": "auto",
+    "fan_speed": "auto",
+    "humidity_threshold": 65,
+    "light_threshold": 30
+  }
+}

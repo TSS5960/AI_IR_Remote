@@ -253,6 +253,70 @@ void mqttMessageHandler(String &topic, String &payload) {
     return;
   }
 
+  // Check if this is a multi-AC command format
+  JsonObjectConst root = doc.as<JsonObjectConst>();
+  if (root.containsKey("type") && strcmp(root["type"], "ac_control") == 0) {
+    Serial.println("[MQTT] Multi-AC Control Message");
+    
+    // Extract AC ID (for future multi-AC support)
+    const char* ac_id = root.containsKey("ac_id") ? root["ac_id"] : "unknown";
+    Serial.printf("[MQTT] AC ID: %s\n", ac_id);
+    
+    // For now, just apply the state to the current AC
+    // TODO: Load AC-specific configuration based on ac_id
+    
+    // Apply power state
+    if (root.containsKey("power")) {
+      const char* powerStr = root["power"];
+      if (strcmp(powerStr, "on") == 0) {
+        Serial.println("[MQTT] -> Power ON");
+        acPowerOn();
+      } else if (strcmp(powerStr, "off") == 0) {
+        Serial.println("[MQTT] -> Power OFF");
+        acPowerOff();
+      }
+    }
+    
+    // Apply temperature
+    if (root.containsKey("temperature")) {
+      int temp = root["temperature"];
+      Serial.printf("[MQTT] -> Temperature: %d°C\n", temp);
+      acSetTemp(temp);
+    }
+    
+    // Apply mode
+    if (root.containsKey("mode")) {
+      const char* modeStr = root["mode"];
+      Serial.printf("[MQTT] -> Mode: %s\n", modeStr);
+      
+      ACMode mode = MODE_AUTO;
+      if (strcmp(modeStr, "cool") == 0) mode = MODE_COOL;
+      else if (strcmp(modeStr, "heat") == 0) mode = MODE_HEAT;
+      else if (strcmp(modeStr, "dry") == 0) mode = MODE_DRY;
+      else if (strcmp(modeStr, "fan") == 0) mode = MODE_FAN;
+      
+      acSetMode(mode);
+    }
+    
+    // Apply fan speed
+    if (root.containsKey("fan_speed")) {
+      const char* fanStr = root["fan_speed"];
+      Serial.printf("[MQTT] -> Fan: %s\n", fanStr);
+      
+      FanSpeed fan = FAN_AUTO;
+      if (strcmp(fanStr, "low") == 0) fan = FAN_LOW;
+      else if (strcmp(fanStr, "medium") == 0 || strcmp(fanStr, "med") == 0) fan = FAN_MED;
+      else if (strcmp(fanStr, "high") == 0) fan = FAN_HIGH;
+      
+      acSetFan(fan);
+    }
+    
+    Serial.println("[MQTT] Multi-AC command processed");
+    Serial.println("[MQTT] -------------------------------\n");
+    return;
+  }
+
+  // Fall back to old command format for backwards compatibility
   const char* command = commandFrom(doc);
   if (command == nullptr) {
     Serial.println("[MQTT] FAIL: No command in payload");
