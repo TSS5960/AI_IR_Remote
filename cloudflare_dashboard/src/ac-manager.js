@@ -187,6 +187,7 @@ export async function controlAirConditioner(acId, command, env) {
       const mqttCommand = {
         type: 'ac_control',
         ac_id: acId,
+        brand: ac.brand || 'Generic',
         ...newState,
         timestamp: Date.now()
       };
