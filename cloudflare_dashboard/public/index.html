@@ -169,18 +169,18 @@
 
       <section class="card custom" style="--delay: 0.35s">
         <div class="card-header">
-          <h2>Custom Signals</h2>
-          <span class="chip subtle">Slots 1 to 5</span>
+          <h2>IR Signals</h2>
+          <span class="chip subtle" id="signalsCount">40 slots</span>
+          <button class="btn btn-primary" onclick="loadIRSignals()" style="margin-left: auto;">🔄 Refresh</button>
         </div>
-        <div class="button-grid">
-          <button class="btn" data-command="custom" data-id="1">Preset 1</button>
-          <button class="btn" data-command="custom" data-id="2">Preset 2</button>
-          <button class="btn" data-command="custom" data-id="3">Preset 3</button>
-          <button class="btn" data-command="custom" data-id="4">Preset 4</button>
-          <button class="btn" data-command="custom" data-id="5">Preset 5</button>
+        <div id="signalsLoading" style="text-align: center; padding: 20px; color: #666;">
+          Loading signals...
+        </div>
+        <div id="signalsGrid" class="signals-grid" style="display: none;">
+          <!-- Signals will be loaded dynamically -->
         </div>
         <p class="hint">
-          Use the IR learning screen on the device to capture these presets.
+          Use the IR learning screen on the device to capture signals. Click signal names to edit and rename.
         </p>
       </section>
 

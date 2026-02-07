@@ -28,6 +28,8 @@ const ALLOWED_COMMANDS = new Set([
   "set_light_threshold",
   "get_status",
   "custom",
+  "ir_list",
+  "ir_rename",
   "alarm_add",
   "alarm_update",
   "alarm_delete"
@@ -168,6 +170,8 @@ async function loadConfigFromWorker() {
     }
     const data = await response.json();
     applyWorkerConfig(data);
+    // Load IR signals after config is applied
+    setTimeout(loadIRSignals, 500);
   } catch (error) {
     setStatus("warn", "Worker config unavailable");
   }
@@ -1894,10 +1898,22 @@ function buildCommandPayload(command, payload) {
 
   if (command === "custom") {
     const id = Number(payload.id);
-    if (!Number.isInteger(id) || id < 1 || id > 5) {
-      return { error: "custom requires id 1-5" };
+    if (!Number.isInteger(id) || id < 1 || id > 40) {
+      return { error: "custom requires id 1-40" };
     }
     commandPayload.id = String(id);
+  }
+
+  if (command === "ir_rename") {
+    const index = Number(payload.index);
+    if (!Number.isInteger(index) || index < 0 || index >= 40) {
+      return { error: "ir_rename requires index 0-39" };
+    }
+    if (!payload.name || typeof payload.name !== 'string' || payload.name.trim().length === 0) {
+      return { error: "ir_rename requires non-empty name" };
+    }
+    commandPayload.index = index;
+    commandPayload.name = payload.name.trim().substring(0, 31); // Limit to 31 chars
   }
 
   if (command === "alarm_add") {
@@ -2362,3 +2378,181 @@ setInterval(fetchAlarms, ALARM_REFRESH_INTERVAL_MS);
 
 // Expose mqttPublish globally for AC Manager
 window.mqttPublish = mqttPublish;
+
+// Expose IR signals functions globally
+window.loadIRSignals = loadIRSignals;
+window.requestSignalList = requestSignalList;
+window.sendIRSignal = sendIRSignal;
+window.editSignalName = editSignalName;
+window.requestSignalList = requestSignalList;
+
+// ===== IR Signals Management =====
+let irSignals = [];
+
+async function loadIRSignals() {
+  const loadingDiv = document.getElementById('signalsLoading');
+  const gridDiv = document.getElementById('signalsGrid');
+  const countSpan = document.getElementById('signalsCount');
+  
+  loadingDiv.style.display = 'block';
+  loadingDiv.textContent = 'Loading signals from Firebase...';
+  gridDiv.style.display = 'none';
+  
+  try {
+    // Fetch IR signals from Firebase (stored by device)
+    const deviceId = getDeviceId();
+    const irSignalsPath = `/devices/${deviceId}/ir_signals.json`;
+    const response = await fetch(buildFirebaseUrl(irSignalsPath));
+    
+    if (!response.ok) throw new Error('Failed to fetch signals from Firebase');
+    
+    const data = await response.json();
+    
+    if (!data || !data.signals) {
+      // No data yet, request from device
+      loadingDiv.innerHTML = 'No IR signals data found.<br><button class="btn btn-primary" onclick="requestSignalList()" style="margin-top: 10px;">Request from Device</button>';
+      return;
+    }
+    
+    irSignals = data.signals || [];
+    const learnedCount = data.total_learned || irSignals.filter(s => s.learned).length;
+    const totalSignals = data.total_signals || 40;
+    
+    countSpan.textContent = `${learnedCount} / ${totalSignals} learned`;
+    
+    renderIRSignals();
+    
+    loadingDiv.style.display = 'none';
+    gridDiv.style.display = 'grid';
+  } catch (error) {
+    console.error('Failed to load IR signals:', error);
+    loadingDiv.innerHTML = `Error: ${error.message}<br><button class="btn btn-primary" onclick="requestSignalList()" style="margin-top: 10px;">Request from Device</button>`;
+  }
+}
+
+async function requestSignalList() {
+  // Request device to publish IR signals list to Firebase
+  try {
+    const payload = JSON.stringify({ command: 'ir_list' });
+    const result = await mqttPublish(MQTT_TOPIC_COMMAND, payload);
+    if (result.ok) {
+      showToast('✓ Requested signal list update');
+      setTimeout(loadIRSignals, 2000); // Reload after 2 seconds
+    } else {
+      showToast('✗ Failed to request update');
+    }
+  } catch (error) {
+    showToast(`✗ Error: ${error.message}`);
+  }
+}
+
+function renderIRSignals() {
+  const gridDiv = document.getElementById('signalsGrid');
+  gridDiv.innerHTML = '';
+  
+  irSignals.forEach(signal => {
+    const item = document.createElement('div');
+    item.className = `signal-item ${signal.learned ? 'learned' : 'empty'}`;
+    
+    item.innerHTML = `
+      <div class="signal-header">
+        <div class="signal-id">I${signal.id}</div>
+        <div class="signal-status ${signal.learned ? 'learned' : 'empty'}">
+          ${signal.learned ? '✓ Ready' : 'Empty'}
+        </div>
+      </div>
+      <div class="signal-name">${signal.name || 'Not configured'}</div>
+      ${signal.learned ? `
+        <div class="signal-info">
+          ${signal.protocol}<br>
+          0x${signal.value} (${signal.bits} bits)
+        </div>
+      ` : '<div class="signal-info">Use IR learning screen to capture</div>'}
+      <div class="signal-actions">
+        <button class="btn-send" onclick="sendIRSignal(${signal.index})" ${!signal.learned ? 'disabled' : ''}>
+          ▶ Send
+        </button>
+        <button class="btn-edit" onclick="editSignalName(${signal.index})" ${!signal.learned ? 'disabled' : ''}>
+          ✏ Edit
+        </button>
+      </div>
+    `;
+    
+    gridDiv.appendChild(item);
+  });
+}
+
+async function sendIRSignal(index) {
+  const signal = irSignals.find(s => s.index === index);
+  if (!signal || !signal.learned) return;
+  
+  try {
+    // Send via MQTT custom command
+    const payload = JSON.stringify({ command: 'custom', id: signal.id });
+    const result = await mqttPublish(MQTT_TOPIC_COMMAND, payload);
+    if (result.ok) {
+      showToast(`✓ Sent signal: ${signal.name}`);
+    } else {
+      showToast(`✗ Failed to send signal: ${result.error || 'Unknown error'}`);
+    }
+  } catch (error) {
+    console.error('Failed to send signal:', error);
+    showToast(`✗ Error: ${error.message}`);
+  }
+}
+
+async function editSignalName(index) {
+  const signal = irSignals.find(s => s.index === index);
+  if (!signal || !signal.learned) return;
+  
+  const newName = prompt(`Enter new name for Signal I${signal.id}:`, signal.name);
+  if (!newName || newName === signal.name) return;
+  
+  try {
+    // Send rename command via MQTT
+    const payload = JSON.stringify({ 
+      command: 'ir_rename',
+      index: index,
+      name: newName 
+    });
+    const result = await mqttPublish(MQTT_TOPIC_COMMAND, payload);
+    
+    if (result.ok) {
+      signal.name = newName;
+      renderIRSignals();
+      showToast(`✓ Renamed to: ${newName}`);
+      // Refresh after a delay to get updated data from Firebase
+      setTimeout(loadIRSignals, 1500);
+    } else {
+      showToast(`✗ Failed: ${result.error || 'Unknown error'}`);
+    }
+  } catch (error) {
+    console.error('Failed to update signal name:', error);
+    showToast(`✗ Error: ${error.message}`);
+  }
+}
+
+function showToast(message) {
+  // Reuse existing toast/notification system if available
+  const toast = document.createElement('div');
+  toast.style.cssText = `
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    background: var(--ink);
+    color: white;
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-weight: 500;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    z-index: 10000;
+    animation: slideIn 0.3s ease;
+  `;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  
+  setTimeout(() => {
+    toast.style.animation = 'slideOut 0.3s ease';
+    setTimeout(() => toast.remove(), 300);
+  }, 3000);
+}
