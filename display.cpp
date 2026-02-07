@@ -474,9 +474,10 @@ void drawACScreen() {
 
 // Draw IR Learning screen
 void drawIRLearnScreen() {
-  int currentDevice = getCurrentLearnDevice();
+  int currentSignal = getCurrentSignal();
   LearnState state = getLearnState();
-  LearnedDevice device = getLearnedDevice(currentDevice);
+  bool isLearned = isSignalLearned(currentSignal);
+  int learnedCount = countLearnedSignals();
   
   // Title
   tft.setTextColor(TFT_CYAN);
@@ -484,15 +485,17 @@ void drawIRLearnScreen() {
   tft.setCursor(20, 20);
   tft.println("IR LEARN");
   
-  // Current device
+  // Current signal
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
   tft.setCursor(10, 60);
-  tft.printf("Device: %d / 5", currentDevice + 1);
+  tft.printf("Signal: %d / %d", currentSignal + 1, TOTAL_SIGNALS);
   
-  // Device status
+  // Signal status
   int yPos = 90;
-  if (device.hasData) {
+  if (isLearned) {
+    LearnedButton signal = getSignal(currentSignal);
+    
     tft.setTextColor(TFT_GREEN);
     tft.setCursor(10, yPos);
     tft.print("Status: Learned");
@@ -502,20 +505,39 @@ void drawIRLearnScreen() {
     tft.setTextSize(1);
     tft.setCursor(10, yPos);
     
-    String protocolStr = String(typeToString(device.protocol));
+    // Show signal name
+    tft.printf("Name: %s", signal.buttonName);
+    
+    yPos += 20;
+    tft.setCursor(10, yPos);
+    String protocolStr = String(typeToString(signal.protocol));
     if (protocolStr.length() > 20) {
       protocolStr = protocolStr.substring(0, 17) + "...";
     }
     tft.printf("Protocol: %s", protocolStr.c_str());
     
+    // Show quality score if available
+    if (signal.metadata.signalQuality > 0) {
+      yPos += 20;
+      tft.setCursor(10, yPos);
+      tft.printf("Quality: %d/100", signal.metadata.signalQuality);
+    }
+    
     yPos += 15;
     tft.setCursor(10, yPos);
-    tft.printf("Value: 0x%llX", device.value);
+    tft.printf("Value: 0x%llX", signal.value);
   } else {
     tft.setTextColor(TFT_RED);
     tft.setCursor(10, yPos);
-    tft.print("Status: Empty");
+    tft.print("Status: Not Learned");
   }
+  
+  // Show total learned count
+  yPos += 30;
+  tft.setTextColor(TFT_CYAN);
+  tft.setTextSize(1);
+  tft.setCursor(10, yPos);
+  tft.printf("Total Learned: %d/%d", learnedCount, TOTAL_SIGNALS);
   
   // Learning state
   yPos = 140;
@@ -531,23 +553,23 @@ void drawIRLearnScreen() {
     case LEARN_WAITING:
       tft.setTextColor(TFT_YELLOW);
       tft.setCursor(10, yPos);
-      tft.println("Waiting...");
+      tft.println("Learning...");
       yPos += 25;
       tft.setTextSize(1);
       tft.setTextColor(TFT_LIGHTGREY);
       tft.setCursor(10, yPos);
-      tft.println("Point remote & press");
+      tft.println("Point remote & press (3x)");
       break;
       
     case LEARN_RECEIVED:
       tft.setTextColor(TFT_GREEN);
       tft.setCursor(10, yPos);
-      tft.println("Received!");
+      tft.println("Validated!");
       yPos += 25;
       tft.setTextSize(1);
       tft.setTextColor(TFT_LIGHTGREY);
       tft.setCursor(10, yPos);
-      tft.println("Click to save");
+      tft.println("Saving & auto-advance");
       break;
       
     case LEARN_SAVED:
@@ -562,13 +584,13 @@ void drawIRLearnScreen() {
   tft.setTextSize(1);
   tft.setTextColor(TFT_LIGHTGREY);
   tft.setCursor(5, yPos);
-  tft.println("JOY UP/DOWN: DEVICE +/-");
+  tft.println("JOY UP/DOWN: SIGNAL +/-");
   yPos += 12;
   tft.setCursor(5, yPos);
-  tft.println("CLICK: LEARN/SAVE");
+  tft.println("CLICK: START LEARNING");
   yPos += 12;
   tft.setCursor(5, yPos);
-  tft.println("JOY L/R: SWITCH");
+  tft.println("JOY L/R: SWITCH SCREEN");
 }
 
 // Draw sensors screen (temperature / humidity / light)

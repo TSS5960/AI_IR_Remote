@@ -221,6 +221,16 @@ FanSpeed parseFanSpeed(const char* fanStr) {
   return FAN_AUTO; // Default
 }
 
+// Helper: Publish JSON response to MQTT
+void publishResponse(const String& jsonStr) {
+  if (client.connected()) {
+    client.publish(MQTT_PUBLISH_TOPIC, jsonStr);
+    Serial.printf("[MQTT] Published: %s\n", jsonStr.c_str());
+  } else {
+    Serial.println("[MQTT] FAIL: Not connected");
+  }
+}
+
 // ========================================
 // Command Handler Functions
 // ========================================
@@ -284,14 +294,136 @@ void handleCustom(JsonObjectConst obj) {
     Serial.printf("[MQTT] FAIL: Invalid ID: %d\n", deviceId);
     return;
   }
-  int deviceIndex = deviceId - 1;
-  if (!getLearnedDevice(deviceIndex).hasData) {
-    Serial.printf("[MQTT] FAIL: Device %d empty\n", deviceId);
+  
+  // Backward compatibility: map device ID to first signal of that device group
+  // Device 1 → Signal 0-7, Device 2 → Signal 8-15, etc.
+  int signalIndex = (deviceId - 1) * MAX_BUTTONS_PER_DEVICE;  // 0, 8, 16, 24, 32
+  
+  if (!isSignalLearned(signalIndex)) {
+    Serial.printf("[MQTT] FAIL: Signal %d (Device %d) not learned\n", signalIndex, deviceId);
     return;
   }
-  Serial.printf("[MQTT] Sending Device %d...\n", deviceId);
-  sendLearnedSignal(deviceIndex);
-  Serial.printf("[MQTT] OK: Device %d sent\n", deviceId);
+  
+  Serial.printf("[MQTT] Sending Signal %d (compat: Device %d)...\n", signalIndex, deviceId);
+  sendSignal(signalIndex);
+  Serial.printf("[MQTT] OK: Signal %d sent\n", signalIndex);
+}
+
+// Enhanced IR Signal Handlers (Flat 40-signal API)
+
+void handleSetSignalName(JsonObjectConst obj) {
+  if (!obj.containsKey("signal") || !obj.containsKey("name")) {
+    Serial.println("[MQTT] FAIL: Missing 'signal' or 'name'");
+    publishResponse("{\"status\":\"error\",\"message\":\"Missing parameters\"}");
+    return;
+  }
+  
+  int signalIndex = obj["signal"].as<int>();
+  if (signalIndex < 0 || signalIndex >= TOTAL_SIGNALS) {
+    Serial.printf("[MQTT] FAIL: Invalid signal index: %d\n", signalIndex);
+    publishResponse("{\"status\":\"error\",\"message\":\"Invalid signal index\"}");
+    return;
+  }
+  
+  const char* name = obj["name"].as<const char*>();
+  if (!name || strlen(name) == 0) {
+    Serial.println("[MQTT] FAIL: Empty name");
+    publishResponse("{\"status\":\"error\",\"message\":\"Empty name\"}");
+    return;
+  }
+  
+  setSignalName(signalIndex, name);
+  Serial.printf("[MQTT] OK: Signal %d renamed to: %s\n", signalIndex, name);
+  
+  // Save to EEPROM
+  int device = signalIndex / MAX_BUTTONS_PER_DEVICE;
+  saveDeviceIncremental(device);
+  
+  String response = "{\"status\":\"success\",\"signal\":" + String(signalIndex) + 
+                    ",\"name\":\"" + String(name) + "\"}";
+  publishResponse(response);
+}
+
+void handleSendSignal(JsonObjectConst obj) {
+  if (!obj.containsKey("signal")) {
+    Serial.println("[MQTT] FAIL: Missing 'signal'");
+    publishResponse("{\"status\":\"error\",\"message\":\"Missing signal parameter\"}");
+    return;
+  }
+  
+  int signalIndex = obj["signal"].as<int>();
+  if (signalIndex < 0 || signalIndex >= TOTAL_SIGNALS) {
+    Serial.printf("[MQTT] FAIL: Invalid signal index: %d\n", signalIndex);
+    publishResponse("{\"status\":\"error\",\"message\":\"Invalid signal index\"}");
+    return;
+  }
+  
+  if (!isSignalLearned(signalIndex)) {
+    Serial.printf("[MQTT] FAIL: Signal %d not learned\n", signalIndex);
+    publishResponse("{\"status\":\"error\",\"message\":\"Signal not learned\"}");
+    return;
+  }
+  
+  Serial.printf("[MQTT] Sending signal %d...\n", signalIndex);
+  sendSignal(signalIndex);
+  Serial.printf("[MQTT] OK: Signal %d sent\n", signalIndex);
+  publishResponse("{\"status\":\"success\",\"signal\":" + String(signalIndex) + "}");
+}
+
+void handleSendSignalByName(JsonObjectConst obj) {
+  if (!obj.containsKey("name")) {
+    Serial.println("[MQTT] FAIL: Missing 'name'");
+    publishResponse("{\"status\":\"error\",\"message\":\"Missing name parameter\"}");
+    return;
+  }
+  
+  const char* name = obj["name"].as<const char*>();
+  Serial.printf("[MQTT] Sending signal by name: %s\n", name);
+  
+  if (sendSignalByName(name)) {
+    Serial.printf("[MQTT] OK: Signal '%s' sent\n", name);
+    publishResponse("{\"status\":\"success\",\"name\":\"" + String(name) + "\"}");
+  } else {
+    Serial.printf("[MQTT] FAIL: Signal '%s' not found\n", name);
+    publishResponse("{\"status\":\"error\",\"message\":\"Signal not found\"}");
+  }
+}
+
+void handleListSignals(JsonObjectConst obj) {
+  Serial.println("[MQTT] Listing all signals...");
+  
+  String json = "{\"signals\":[";
+  int learnedCount = 0;
+  
+  for (int i = 0; i < TOTAL_SIGNALS; i++) {
+    if (i > 0) json += ",";
+    
+    json += "{\"index\":" + String(i);
+    json += ",\"number\":" + String(i + 1);
+    
+    bool learned = isSignalLearned(i);
+    json += ",\"learned\":" + String(learned ? "true" : "false");
+    
+    if (learned) {
+      LearnedButton signal = getSignal(i);
+      json += ",\"name\":\"" + String(signal.buttonName) + "\"";
+      json += ",\"protocol\":\"" + String(typeToString(signal.protocol)) + "\"";
+      json += ",\"quality\":" + String(signal.metadata.signalQuality);
+      learnedCount++;
+    } else {
+      json += ",\"name\":\"\"";
+      json += ",\"protocol\":\"\"";
+      json += ",\"quality\":0";
+    }
+    
+    json += "}";
+  }
+  
+  json += "],\"total_signals\":" + String(TOTAL_SIGNALS);
+  json += ",\"total_learned\":" + String(learnedCount) + "}";
+  
+  Serial.printf("[MQTT] OK: Listed %d learned signals\n", learnedCount);
+  publishResponse(json);
 }
 
 void handleAlarmAdd(JsonObjectConst obj) {
@@ -375,6 +507,10 @@ const CommandHandler HANDLERS[] = {
   {"set_light_threshold", CommandHandlers::handleSetLightThreshold},
   {"set_brand", CommandHandlers::handleSetBrand},
   {"custom", CommandHandlers::handleCustom},
+  {"set_signal_name", CommandHandlers::handleSetSignalName},
+  {"send_signal", CommandHandlers::handleSendSignal},
+  {"send_signal_by_name", CommandHandlers::handleSendSignalByName},
+  {"list_signals", CommandHandlers::handleListSignals},
   {"alarm_add", CommandHandlers::handleAlarmAdd},
   {"alarm_update", CommandHandlers::handleAlarmUpdate},
   {"alarm_delete", CommandHandlers::handleAlarmDelete}

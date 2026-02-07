@@ -253,18 +253,19 @@ void messageHandler(String &topic, String &payload) {
         return;
       }
       
-      int deviceIndex = deviceId - 1;
+      // Backward compatibility: map device ID to first signal of that device group
+      // Device 1 → Signal 0, Device 2 → Signal 8, Device 3 → Signal 16, etc.
+      int signalIndex = (deviceId - 1) * MAX_BUTTONS_PER_DEVICE;
       
-      LearnedDevice device = getLearnedDevice(deviceIndex);
-      if (!device.hasData) {
-        Serial.printf("[AWS] FAIL: Device %d is empty (no learned signal)\n", deviceId);
+      if (!isSignalLearned(signalIndex)) {
+        Serial.printf("[AWS] FAIL: Signal %d (Device %d) not learned\n", signalIndex, deviceId);
         Serial.println("[AWS] ----------------------------------------\n");
         return;
       }
       
-      Serial.printf("[AWS] Sending custom signal from Device %d...\n", deviceId);
-      sendLearnedSignal(deviceIndex);
-      Serial.printf("[AWS] OK: Custom signal sent (Device %d)\n", deviceId);
+      Serial.printf("[AWS] Sending Signal %d (compat: Device %d)...\n", signalIndex, deviceId);
+      sendSignal(signalIndex);
+      Serial.printf("[AWS] OK: Signal %d sent (Device %d)\n", signalIndex, deviceId);
     } else {
       Serial.println("[AWS] FAIL: Missing 'id' parameter");
       Serial.println("[AWS]   Usage: {\"command\":\"custom\",\"id\":\"1\"}");

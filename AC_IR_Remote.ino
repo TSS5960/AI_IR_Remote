@@ -11,7 +11,7 @@
 #include "wifi_manager.h"
 #include "firebase_client.h"
 #include "button_control.h"
-#include "ir_learning_enhanced.h
+#include "ir_learning_enhanced.h"
 #include "sensors.h"
 #include "alarm_manager.h"
 #include "mqtt_broker.h"
