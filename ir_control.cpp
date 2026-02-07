@@ -1,7 +1,12 @@
 #include "ir_control.h"
 
+// Initialize IR receiver with larger buffer for complex protocols (AC remotes can be very long)
+const uint16_t kCaptureBufferSize = 1024;  // Increased from default ~300
+const uint8_t kTimeout = 50;  // Timeout in milliseconds (50ms default)
+const uint16_t kFrequency = 38000;  // 38kHz modulation frequency
+
 IRsend irsend(IR_TX_PIN);
-IRrecv irrecv(IR_RX_PIN);
+IRrecv irrecv(IR_RX_PIN, kCaptureBufferSize, kTimeout, true);
 decode_results results;
 
 IRDaikinESP daikinAC(IR_TX_PIN);
@@ -162,46 +167,8 @@ void sendACState(const ACState& state) {
   }
   
   delay(100);
-}
-
-void initIRReceiver() {
-  irrecv.enableIRIn();
-  Serial.println("红外接收器已启动");
-}
-
-void startLearnMode() {
-  irrecv.enableIRIn();
-  Serial.println("\n========================================");
-  Serial.println("  进入学习模式");
-  Serial.println("========================================");
-  Serial.println("请对准接收器按下遥控器按键...");
-  Serial.println("按 'q' 退出学习模式");
-  Serial.println("========================================\n");
-}
-
-void stopLearnMode() {
-  Serial.println("\n退出学习模式\n");
-}
-
-bool checkReceivedSignal() {
-  if (irrecv.decode(&results)) {
-    printReceivedCode(&results);
-    irrecv.resume();
-    return true;
-  }
-  return false;
-}
-
-void printReceivedCode(decode_results* results) {
-  Serial.println("\n========================================");
-  Serial.println("  接收到红外信号！");
-  Serial.println("========================================");
-  Serial.print("协议: ");
-  Serial.println(typeToString(results->decode_type));
-  Serial.print("代码: 0x");
-  serialPrintUint64(results->value, HEX);
-  Serial.println();
-  Serial.print("位数: ");
-  Serial.println(results->bits);
-  Serial.println("========================================\n");
+  
+  // Resume IR receiver after sending (sending pauses it)
+  irrecv.resume();
+  Serial.println("[IR] IR receiver resumed after transmission");
 }

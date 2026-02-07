@@ -10,13 +10,14 @@
 #include <IRremoteESP8266.h>
 #include <IRrecv.h>
 #include <IRutils.h>
+#include "config.h"
 
 // === Configuration ===
 #define MAX_LEARNED_DEVICES 5
 #define MAX_BUTTONS_PER_DEVICE 8  // Store up to 8 buttons per device
 #define TOTAL_SIGNALS 40          // Total signals = 5 devices × 8 buttons
-#define MAX_IR_BUFFER_SIZE 1024
-#define MAX_EXTENDED_BUFFER 2048  // For very long AC protocols
+#define MAX_IR_BUFFER_SIZE 300    // Reduced from 1024 to prevent EEPROM overflow
+#define MAX_EXTENDED_BUFFER 512   // Reduced from 2048
 
 // Hardware Configuration - CANNOT be changed in software!
 // Your IR receiver (e.g., TSOP4838) and LED are physically tuned to this frequency
@@ -115,6 +116,10 @@ LearnState getLearnState();
 bool checkIRReceiveEnhanced();  // Returns true when complete
 void saveLearnedSignal();       // Save the learned signal
 void cancelLearning();
+void resetLearningState();      // Reset learning state to IDLE
+void testIRReceiver();          // Test if IR receiver is working
+bool monitorIRSignals(unsigned long duration = 0);  // Monitor all IR signals continuously
+void printDetailedSignal(const decode_results* results);  // Print full signal analysis
 
 // Signal Playback
 bool sendSignal(int signalIndex);                    // Send by index (0-39)
@@ -157,6 +162,7 @@ void clearLearnedButton(int deviceIndex, int buttonIndex);
 void loadLearnedDevicesEnhanced();
 void saveLearnedDevicesEnhanced();
 void saveDeviceIncremental(int deviceIndex);  // Save only one device
+void verifyEEPROMData();  // Verify EEPROM integrity and show stats
 
 // Diagnostics
 void printSignalDetails(int signalIndex);           // Print details for one signal

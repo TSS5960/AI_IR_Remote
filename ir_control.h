@@ -28,10 +28,4 @@ void initIR();
 void sendACState(const ACState& state);
 const char* getBrandName(ACBrand brand);
 
-void initIRReceiver();
-void startLearnMode();
-void stopLearnMode();
-bool checkReceivedSignal();
-void printReceivedCode(decode_results* results);
-
 #endif
