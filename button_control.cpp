@@ -277,20 +277,28 @@ static void adjustVolume(int delta) {
   updateScreenDisplay();
 }
 
-static void handleLearnDeviceStep(int step) {
+static void handleSignalStep(int step) {
   LearnState state = getLearnState();
   if (state != LEARN_IDLE && state != LEARN_SAVED) {
     return;
   }
 
-  int currentDevice = getCurrentLearnDevice();
-  int nextDevice = (currentDevice + step + MAX_LEARNED_DEVICES) % MAX_LEARNED_DEVICES;
-  if (nextDevice == currentDevice) {
+  int currentSignal = getCurrentSignal();
+  int nextSignal = currentSignal + step;
+  
+  // Wrap around: 0-39
+  if (nextSignal < 0) {
+    nextSignal = TOTAL_SIGNALS - 1;  // 39
+  } else if (nextSignal >= TOTAL_SIGNALS) {
+    nextSignal = 0;
+  }
+  
+  if (nextSignal == currentSignal) {
     return;
   }
 
-  setCurrentLearnDevice(nextDevice);
-  Serial.printf("[Joystick] IR device: %d -> %d\n", currentDevice + 1, nextDevice + 1);
+  setCurrentSignal(nextSignal);
+  Serial.printf("[Joystick] IR signal: %d -> %d (of %d)\n", currentSignal + 1, nextSignal + 1, TOTAL_SIGNALS);
   playBeep(1000, 50);
   updateScreenDisplay();
 }
@@ -299,7 +307,7 @@ static void handleJoystickUp() {
   if (currentScreen == SCREEN_VOLUME) {
     adjustVolume(5);
   } else if (currentScreen == SCREEN_IR_LEARN) {
-    handleLearnDeviceStep(1);
+    handleSignalStep(1);
   }
 }
 
@@ -307,7 +315,7 @@ static void handleJoystickDown() {
   if (currentScreen == SCREEN_VOLUME) {
     adjustVolume(-5);
   } else if (currentScreen == SCREEN_IR_LEARN) {
-    handleLearnDeviceStep(-1);
+    handleSignalStep(-1);
   }
 }
 
@@ -339,15 +347,25 @@ static void handleJoystickClick() {
   if (currentScreen == SCREEN_IR_LEARN) {
     LearnState state = getLearnState();
     if (state == LEARN_IDLE || state == LEARN_SAVED) {
-      Serial.println("[Joystick] Click: Start learning");
-      startLearning();
+      int currentSignal = getCurrentSignal();
+      Serial.printf("[Joystick] Click: Start learning signal %d/%d\n", currentSignal + 1, TOTAL_SIGNALS);
+      startLearningSignal(currentSignal);
       playBeep(800, 100);
       delay(50);
       playBeep(1000, 100);
       updateScreenDisplay();
+      
+      // Auto-advance to next signal after successful save
+      // The save happens in checkIRReceiveEnhanced() when all 3 captures match
     } else if (state == LEARN_RECEIVED) {
-      Serial.println("[Joystick] Click: Save signal");
-      saveLearnedSignal();
+      Serial.println("[Joystick] Click: Confirming save (automatic)");
+      // Save is automatic after 3 successful captures
+      // Just advance to next signal
+      int nextSignal = getCurrentSignal() + 1;
+      if (nextSignal < TOTAL_SIGNALS) {
+        setCurrentSignal(nextSignal);
+        Serial.printf("[Joystick] Auto-advanced to signal %d/%d\n", nextSignal + 1, TOTAL_SIGNALS);
+      }
       playBeep(1200, 100);
       delay(50);
       playBeep(1400, 100);
