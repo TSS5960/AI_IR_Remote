@@ -8,6 +8,7 @@
 #include "ac_control.h"
 #include "speaker_control.h"
 #include "mic_control.h"
+#include "ei_wake_word.h"  // Edge Impulse wake word detection
 #include "wifi_manager.h"
 #include "firebase_client.h"
 #include "button_control.h"
@@ -168,24 +169,25 @@ static void printHeartbeat() {
   Serial.println("[Status] ------------------------------\n");
 }
 
-// ========== Wake Word Callback ==========
+// ========== Wake Word Callback (Edge Impulse) ==========
 
 /**
- * Callback function when "Hey Bob" is detected
+ * Callback function when "Hey Bob" is detected by Edge Impulse
  * Lights up the NeoPixel RGB LED for 3 seconds
+ * @param confidence The confidence score (0.0 - 1.0)
  */
-void onWakeWordDetected() {
-  Serial.println("\n*** WAKE WORD DETECTED: Hey Bob! ***");
-  
+void onWakeWordDetected(float confidence) {
+  Serial.printf("\n*** WAKE WORD DETECTED: Hey Bob! (%.0f%% confidence) ***\n", confidence * 100);
+
   // Turn on NeoPixel RGB LED to white (255, 255, 255)
   pixels.setPixelColor(0, pixels.Color(255, 255, 255));
   pixels.show();
-  
+
   // Mark LED as active
   wakeWordLedActive = true;
   wakeWordLedOnTime = millis();
-  
-  // Optional: Play a confirmation beep
+
+  // Play a confirmation beep
   playActionTone();
 }
 
@@ -266,13 +268,17 @@ void setup() {
   // Show help
   printHelp();
   
-  // Initialize wake word detection
-  Serial.println("\n[WakeWord] Setting up voice activation...");
-  setWakeWordCallback(onWakeWordDetected);  // LED and beep when "Hey Bob" confirmed
-  if (startWakeWordDetection()) {
-    Serial.println("[WakeWord] OK: Listening for 'Hey Bob'");
+  // Initialize Edge Impulse wake word detection
+  Serial.println("\n[WakeWord] Setting up Edge Impulse voice activation...");
+  if (initEIWakeWord()) {
+    setEIWakeWordCallback(onWakeWordDetected);
+    if (startEIWakeWord()) {
+      Serial.println("[WakeWord] OK: Listening for 'Hey Bob' (Edge Impulse)");
+    } else {
+      Serial.println("[WakeWord] WARN: Failed to start Edge Impulse detection");
+    }
   } else {
-    Serial.println("[WakeWord] WARN: Failed to start detection");
+    Serial.println("[WakeWord] ERROR: Edge Impulse initialization failed");
   }
   
   Serial.println("\n========================================");
@@ -292,8 +298,8 @@ void loop() {
   handleFirebase();
   handleMqttBroker();
   
-  // Update wake word detection (throttled to not block network)
-  updateWakeWordDetection();
+  // Update Edge Impulse wake word detection (throttled to not block network)
+  updateEIWakeWord();
   
   // Handle wake word LED timer (turn off after 3 seconds)
   if (wakeWordLedActive && (millis() - wakeWordLedOnTime >= 3000)) {
@@ -397,17 +403,33 @@ void handleCommand(const String& line) {
   lineLower.trim();
   
   if (lineLower == "train") {
-    trainWakeWord();
+    Serial.println("[WakeWord] Training not needed - using Edge Impulse model");
+    Serial.println("[WakeWord] Re-train model on edgeimpulse.com if needed");
     return;
   }
-  
+
   if (lineLower == "wake_start") {
-    startWakeWordDetection();
+    startEIWakeWord();
     return;
   }
-  
+
   if (lineLower == "wake_stop") {
-    stopWakeWordDetection();
+    stopEIWakeWord();
+    return;
+  }
+
+  if (lineLower == "wake_threshold") {
+    Serial.printf("[WakeWord] Current threshold: %.0f%%\n", getEIConfidenceThreshold() * 100);
+    return;
+  }
+
+  if (lineLower.startsWith("wake_threshold ")) {
+    float threshold = lineLower.substring(15).toFloat();
+    if (threshold > 0 && threshold <= 100) {
+      setEIConfidenceThreshold(threshold / 100.0f);
+    } else {
+      Serial.println("[WakeWord] Usage: wake_threshold <0-100>");
+    }
     return;
   }
   
@@ -656,13 +678,14 @@ void printHelp() {
   Serial.println("  I1-I40 - Send learned IR signal 1-40");
   Serial.println("  Example: I1 (sends signal 1)");
   Serial.println();
-  Serial.println("  Wake Word (Voice Control):");
+  Serial.println("  Wake Word (Edge Impulse):");
   Serial.println("  ----------------------------------------");
   Serial.println("  voice - Test microphone (show voice levels)");
   Serial.println("  repeat - Record 3 sec and play back");
-  Serial.println("  train - Train 'Hey Bob' wake word");
   Serial.println("  wake_start - Start wake word detection");
   Serial.println("  wake_stop - Stop wake word detection");
+  Serial.println("  wake_threshold - Show current confidence threshold");
+  Serial.println("  wake_threshold N - Set threshold (0-100%)");
   Serial.println();
   Serial.println("  Alarm:");
   Serial.println("  ----------------------------------------");
