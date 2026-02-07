@@ -9,6 +9,7 @@
 #include "ac_control.h"
 #include "ir_learning_enhanced.h"
 #include "alarm_manager.h"
+#include "firebase_client.h"
 #include <stdio.h>
 
 WiFiClient net = WiFiClient();
@@ -287,38 +288,47 @@ void handleSetBrand(JsonObjectConst obj) {
 void handleCustom(JsonObjectConst obj) {
   if (!obj.containsKey("id")) {
     Serial.println("[MQTT] FAIL: Missing 'id'");
+    publishResponse("{\"status\":\"error\",\"message\":\"Missing id parameter\"}");
     return;
   }
-  int deviceId = atoi(obj["id"]);
-  if (deviceId < 1 || deviceId > 5) {
-    Serial.printf("[MQTT] FAIL: Invalid ID: %d\n", deviceId);
-    return;
-  }
+  int id = obj["id"].as<int>();
   
-  // Backward compatibility: map device ID to first signal of that device group
-  // Device 1 → Signal 0-7, Device 2 → Signal 8-15, etc.
-  int signalIndex = (deviceId - 1) * MAX_BUTTONS_PER_DEVICE;  // 0, 8, 16, 24, 32
+  // Support signal IDs 1-40 mapping to signal index 0-39
+  int signalIndex;
+  if (id >= 1 && id <= 40) {
+    signalIndex = id - 1;
+  } else {
+    Serial.printf("[MQTT] FAIL: Invalid ID: %d (must be 1-40)\n", id);
+    publishResponse("{\"status\":\"error\",\"message\":\"Invalid id (must be 1-40)\"}");
+    return;
+  }
   
   if (!isSignalLearned(signalIndex)) {
-    Serial.printf("[MQTT] FAIL: Signal %d (Device %d) not learned\n", signalIndex, deviceId);
+    Serial.printf("[MQTT] FAIL: Signal %d (ID %d) not learned\n", signalIndex, id);
+    publishResponse("{\"status\":\"error\",\"message\":\"Signal not learned\"}");
     return;
   }
   
-  Serial.printf("[MQTT] Sending Signal %d (compat: Device %d)...\n", signalIndex, deviceId);
+  Serial.printf("[MQTT] Sending Signal %d (ID %d)...\n", signalIndex, id);
   sendSignal(signalIndex);
   Serial.printf("[MQTT] OK: Signal %d sent\n", signalIndex);
+  publishResponse("{\"status\":\"success\",\"signal\":" + String(signalIndex) + ",\"id\":" + String(id) + "}");
 }
 
 // Enhanced IR Signal Handlers (Flat 40-signal API)
 
+// Forward declaration
+void handleListSignals(JsonObjectConst obj);
+
 void handleSetSignalName(JsonObjectConst obj) {
-  if (!obj.containsKey("signal") || !obj.containsKey("name")) {
-    Serial.println("[MQTT] FAIL: Missing 'signal' or 'name'");
+  // Accept both "signal" and "index" parameter names for compatibility
+  if (!obj.containsKey("name") || (!obj.containsKey("signal") && !obj.containsKey("index"))) {
+    Serial.println("[MQTT] FAIL: Missing 'signal'/'index' or 'name'");
     publishResponse("{\"status\":\"error\",\"message\":\"Missing parameters\"}");
     return;
   }
   
-  int signalIndex = obj["signal"].as<int>();
+  int signalIndex = obj.containsKey("index") ? obj["index"].as<int>() : obj["signal"].as<int>();
   if (signalIndex < 0 || signalIndex >= TOTAL_SIGNALS) {
     Serial.printf("[MQTT] FAIL: Invalid signal index: %d\n", signalIndex);
     publishResponse("{\"status\":\"error\",\"message\":\"Invalid signal index\"}");
@@ -335,13 +345,16 @@ void handleSetSignalName(JsonObjectConst obj) {
   setSignalName(signalIndex, name);
   Serial.printf("[MQTT] OK: Signal %d renamed to: %s\n", signalIndex, name);
   
-  // Save to EEPROM
+  // Save to SPIFFS
   int device = signalIndex / MAX_BUTTONS_PER_DEVICE;
   saveDeviceIncremental(device);
   
   String response = "{\"status\":\"success\",\"signal\":" + String(signalIndex) + 
                     ",\"name\":\"" + String(name) + "\"}";
   publishResponse(response);
+  
+  // Auto-update Firebase with latest signal names
+  publishIRSignalsToFirebase();
 }
 
 void handleSendSignal(JsonObjectConst obj) {
@@ -399,7 +412,7 @@ void handleListSignals(JsonObjectConst obj) {
     if (i > 0) json += ",";
     
     json += "{\"index\":" + String(i);
-    json += ",\"number\":" + String(i + 1);
+    json += ",\"id\":" + String(i + 1);  // Changed "number" to "id" for web dashboard
     
     bool learned = isSignalLearned(i);
     json += ",\"learned\":" + String(learned ? "true" : "false");
@@ -408,11 +421,19 @@ void handleListSignals(JsonObjectConst obj) {
       LearnedButton signal = getSignal(i);
       json += ",\"name\":\"" + String(signal.buttonName) + "\"";
       json += ",\"protocol\":\"" + String(typeToString(signal.protocol)) + "\"";
+      
+      // Add value and bits for web dashboard
+      char valueStr[20];
+      sprintf(valueStr, "%llX", signal.value);
+      json += ",\"value\":\"" + String(valueStr) + "\"";
+      json += ",\"bits\":" + String(signal.bits);
       json += ",\"quality\":" + String(signal.metadata.signalQuality);
       learnedCount++;
     } else {
-      json += ",\"name\":\"\"";
+      json += ",\"name\":\"Signal_" + String(i + 1) + "\"";  // Default name
       json += ",\"protocol\":\"\"";
+      json += ",\"value\":\"\"";
+      json += ",\"bits\":0";
       json += ",\"quality\":0";
     }
     
@@ -424,6 +445,11 @@ void handleListSignals(JsonObjectConst obj) {
   
   Serial.printf("[MQTT] OK: Listed %d learned signals\n", learnedCount);
   publishResponse(json);
+  
+  // Also publish to Firebase for web dashboard access
+  if (firebaseWriteIRSignals(json)) {
+    Serial.println("[MQTT] IR signals published to Firebase");
+  }
 }
 
 void handleAlarmAdd(JsonObjectConst obj) {
@@ -482,6 +508,58 @@ void handleGetStatus(JsonObjectConst obj) { publishMqttStatus(getACState()); }
 }  // namespace CommandHandlers
 
 // ========================================
+// IR Signals Firebase Sync
+// ========================================
+
+// Standalone function to publish IR signals to Firebase (no MQTT response)
+void publishIRSignalsToFirebase() {
+  Serial.println("[MQTT] Auto-publishing IR signals to Firebase...");
+  
+  String json = "{\"signals\":[";
+  int learnedCount = 0;
+  
+  for (int i = 0; i < TOTAL_SIGNALS; i++) {
+    if (i > 0) json += ",";
+    
+    json += "{\"index\":" + String(i);
+    json += ",\"id\":" + String(i + 1);
+    
+    bool learned = isSignalLearned(i);
+    json += ",\"learned\":" + String(learned ? "true" : "false");
+    
+    if (learned) {
+      LearnedButton signal = getSignal(i);
+      json += ",\"name\":\"" + String(signal.buttonName) + "\"";
+      json += ",\"protocol\":\"" + String(typeToString(signal.protocol)) + "\"";
+      
+      char valueStr[20];
+      sprintf(valueStr, "%llX", signal.value);
+      json += ",\"value\":\"" + String(valueStr) + "\"";
+      json += ",\"bits\":" + String(signal.bits);
+      json += ",\"quality\":" + String(signal.metadata.signalQuality);
+      learnedCount++;
+    } else {
+      json += ",\"name\":\"Signal_" + String(i + 1) + "\"";
+      json += ",\"protocol\":\"\"";
+      json += ",\"value\":\"\"";
+      json += ",\"bits\":0";
+      json += ",\"quality\":0";
+    }
+    
+    json += "}";
+  }
+  
+  json += "],\"total_signals\":" + String(TOTAL_SIGNALS);
+  json += ",\"total_learned\":" + String(learnedCount) + "}";
+  
+  if (firebaseWriteIRSignals(json)) {
+    Serial.printf("[MQTT] ✓ Published %d learned signals to Firebase\n", learnedCount);
+  } else {
+    Serial.println("[MQTT] ✗ Failed to publish to Firebase");
+  }
+}
+
+// ========================================
 // Command Dispatcher
 // ========================================
 
@@ -508,9 +586,11 @@ const CommandHandler HANDLERS[] = {
   {"set_brand", CommandHandlers::handleSetBrand},
   {"custom", CommandHandlers::handleCustom},
   {"set_signal_name", CommandHandlers::handleSetSignalName},
+  {"ir_rename", CommandHandlers::handleSetSignalName},  // Alias for web dashboard
   {"send_signal", CommandHandlers::handleSendSignal},
   {"send_signal_by_name", CommandHandlers::handleSendSignalByName},
   {"list_signals", CommandHandlers::handleListSignals},
+  {"ir_list", CommandHandlers::handleListSignals},  // Alias for web dashboard
   {"alarm_add", CommandHandlers::handleAlarmAdd},
   {"alarm_update", CommandHandlers::handleAlarmUpdate},
   {"alarm_delete", CommandHandlers::handleAlarmDelete}
@@ -584,6 +664,10 @@ bool connectMqttBroker() {
   Serial.println("========================================\n");
 
   publishMqttStatus(getACState());
+  
+  // Auto-publish IR signals to Firebase so dashboard always has latest data
+  publishIRSignalsToFirebase();
+  
   return true;
 }
 

@@ -291,6 +291,16 @@ bool firebaseWriteAlarms(const AlarmInfo* alarms, int count, const char* source)
   return sendJson(buildUrl(path), payload, true, "alarms");
 }
 
+bool firebaseWriteIRSignals(const String& jsonData) {
+  if (!isFirebaseConfigured()) {
+    lastError = "Not configured";
+    return false;
+  }
+
+  String path = "/devices/" + String(FIREBASE_DEVICE_ID) + "/ir_signals.json"; 
+  return sendJson(buildUrl(path), jsonData, true, "ir_signals");
+}
+
 bool firebaseAppendStatus(const ACState& state, const SensorData& sensors, const char* label) {
   if (!isFirebaseConfigured()) {
     lastError = "Not configured";

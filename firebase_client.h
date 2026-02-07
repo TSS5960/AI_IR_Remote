@@ -34,6 +34,9 @@ bool firebaseWriteStateWithSensors(const ACState& state, const SensorData& senso
 // Write alarm list (overwrites)
 bool firebaseWriteAlarms(const AlarmInfo* alarms, int count, const char* source);
 
+// Write IR signals data to Firebase
+bool firebaseWriteIRSignals(const String& jsonData);
+
 // Append combined status (AC + sensors) to Firebase history
 bool firebaseAppendStatus(const ACState& state, const SensorData& sensors, const char* label);
 
