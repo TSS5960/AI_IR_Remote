@@ -18,6 +18,7 @@
   padding: 20px;
   overflow-y: auto;
   max-height: 750px;
+  color: white;
 }
 
 .ac-control-section {
@@ -26,6 +27,7 @@
   padding: 0;
   overflow-y: auto;
   max-height: 750px;
+  color: white;
 }
 
 .section-header {
@@ -38,6 +40,7 @@
 .section-header h2 {
   margin: 0;
   font-size: 1.5rem;
+  color: white;
 }
 
 .ac-list {
@@ -48,7 +51,7 @@
 
 .no-acs {
   text-align: center;
-  color: #888;
+  color: #ccc;
   padding: 40px 20px;
 }
 
@@ -60,6 +63,7 @@
   border: 2px solid transparent;
   transition: all 0.3s ease;
   cursor: pointer;
+  color: white;
 }
 
 .ac-card.active {
@@ -104,11 +108,12 @@
 .ac-card-header h3 {
   margin: 0;
   font-size: 1.1rem;
+  color: white;
 }
 
 .ac-brand {
   font-size: 0.85rem;
-  color: #888;
+  color: #ddd;
   background: #333;
   padding: 4px 8px;
   border-radius: 4px;
@@ -126,6 +131,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
+  color: white;
 }
 
 .status-indicator {
@@ -146,11 +152,12 @@
 .ac-temp {
   font-size: 1.5rem;
   font-weight: bold;
+  color: white;
 }
 
 .ac-mode {
   font-size: 0.85rem;
-  color: #aaa;
+  color: #ccc;
 }
 
 .ac-card-actions {
@@ -301,13 +308,13 @@
 }
 
 .ac-location {
-  color: #888;
+  color: #ccc;
   margin-bottom: 24px;
 }
 
 .placeholder {
   text-align: center;
-  color: #666;
+  color: #ccc;
   padding: 60px 20px;
   font-size: 1.1rem;
 }
@@ -360,6 +367,7 @@
   display: block;
   margin-bottom: 12px;
   font-size: 1.1rem;
+  color: white;
 }
 
 .temp-controls {
@@ -410,6 +418,7 @@
   display: block;
   margin-bottom: 12px;
   font-size: 1.1rem;
+  color: white;
 }
 
 .mode-buttons, .fan-buttons {
@@ -450,7 +459,7 @@
 .automation-info h3 {
   margin-top: 0;
   font-size: 1rem;
-  color: #aaa;
+  color: white;
 }
 
 .automation-info p {
@@ -480,6 +489,7 @@
   max-width: 600px;
   max-height: 80vh;
   overflow-y: auto;
+  color: white;
 }
 
 .close {
@@ -535,12 +545,13 @@
 .modal-content h2 {
   margin-top: 0;
   margin-bottom: 24px;
+  color: white;
 }
 
 .modal-content h3 {
   margin-top: 24px;
   margin-bottom: 16px;
-  color: #aaa;
+  color: #ddd;
   font-size: 1rem;
   text-transform: uppercase;
 }
