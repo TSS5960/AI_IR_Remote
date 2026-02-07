@@ -146,6 +146,254 @@ const char* commandFrom(JsonDocument& doc) {
 
 }  // namespace
 
+// Brand name mapping table
+struct BrandMapping {
+  const char* name;
+  ACBrand brand;
+};
+
+const BrandMapping BRAND_MAPPINGS[] = {
+  {"Daikin", BRAND_DAIKIN},
+  {"Mitsubishi", BRAND_MITSUBISHI},
+  {"Panasonic", BRAND_PANASONIC},
+  {"Gree", BRAND_GREE},
+  {"Greece", BRAND_GREE},
+  {"Midea", BRAND_MIDEA},
+  {"Haier", BRAND_HAIER},
+  {"Samsung", BRAND_SAMSUNG},
+  {"LG", BRAND_LG},
+  {"Fujitsu", BRAND_FUJITSU},
+  {"Hitachi", BRAND_HITACHI}
+};
+
+ACBrand parseBrand(const char* brandStr) {
+  for (size_t i = 0; i < sizeof(BRAND_MAPPINGS) / sizeof(BRAND_MAPPINGS[0]); i++) {
+    if (strcasecmp(brandStr, BRAND_MAPPINGS[i].name) == 0) {
+      return BRAND_MAPPINGS[i].brand;
+    }
+  }
+  return BRAND_PANASONIC; // Default
+}
+
+// Mode name mapping table
+struct ModeMapping {
+  const char* name;
+  ACMode mode;
+};
+
+const ModeMapping MODE_MAPPINGS[] = {
+  {"auto", MODE_AUTO},
+  {"cool", MODE_COOL},
+  {"heat", MODE_HEAT},
+  {"dry", MODE_DRY},
+  {"fan", MODE_FAN}
+};
+
+ACMode parseMode(const char* modeStr) {
+  for (size_t i = 0; i < sizeof(MODE_MAPPINGS) / sizeof(MODE_MAPPINGS[0]); i++) {
+    if (strcmp(modeStr, MODE_MAPPINGS[i].name) == 0) {
+      return MODE_MAPPINGS[i].mode;
+    }
+  }
+  return MODE_AUTO; // Default
+}
+
+// Fan speed mapping table
+struct FanMapping {
+  const char* name;
+  FanSpeed speed;
+};
+
+const FanMapping FAN_MAPPINGS[] = {
+  {"auto", FAN_AUTO},
+  {"low", FAN_LOW},
+  {"medium", FAN_MED},
+  {"med", FAN_MED},
+  {"high", FAN_HIGH}
+};
+
+FanSpeed parseFanSpeed(const char* fanStr) {
+  for (size_t i = 0; i < sizeof(FAN_MAPPINGS) / sizeof(FAN_MAPPINGS[0]); i++) {
+    if (strcmp(fanStr, FAN_MAPPINGS[i].name) == 0) {
+      return FAN_MAPPINGS[i].speed;
+    }
+  }
+  return FAN_AUTO; // Default
+}
+
+// ========================================
+// Command Handler Functions
+// ========================================
+
+namespace CommandHandlers {
+
+void handlePowerOn(JsonObjectConst obj) { acPowerOn(); }
+void handlePowerOff(JsonObjectConst obj) { acPowerOff(); }
+void handlePowerToggle(JsonObjectConst obj) { acPowerToggle(); }
+void handleTempUp(JsonObjectConst obj) { acTempUp(); }
+void handleTempDown(JsonObjectConst obj) { acTempDown(); }
+void handleModeCycle(JsonObjectConst obj) { acModeCycle(); }
+void handleFanCycle(JsonObjectConst obj) { acFanCycle(); }
+
+void handleSetTemperature(JsonObjectConst obj) {
+  if (obj.containsKey("value")) acSetTemp(obj["value"]);
+  else Serial.println("[MQTT] FAIL: Missing 'value'");
+}
+
+void handleSetMode(JsonObjectConst obj) {
+  if (obj.containsKey("value")) acSetMode(parseMode(obj["value"]));
+  else Serial.println("[MQTT] FAIL: Missing 'value'");
+}
+
+void handleSetFan(JsonObjectConst obj) {
+  if (obj.containsKey("value")) acSetFan(parseFanSpeed(obj["value"]));
+  else Serial.println("[MQTT] FAIL: Missing 'value'");
+}
+
+void handleSetHumidityThreshold(JsonObjectConst obj) {
+  if (obj.containsKey("value")) setAutoDryThreshold(obj["value"]);
+  else Serial.println("[MQTT] FAIL: Missing 'value'");
+}
+
+void handleSetLightThreshold(JsonObjectConst obj) {
+  if (obj.containsKey("value")) setSleepLightThreshold(obj["value"]);
+  else Serial.println("[MQTT] FAIL: Missing 'value'");
+}
+
+void handleSwitchBrand(JsonObjectConst obj) {
+  ACState state = getACState();
+  ACBrand newBrand = (ACBrand)((state.brand + 1) % BRAND_COUNT);
+  setBrand(newBrand);
+  Serial.printf("[MQTT] Brand switched to: %s\n", getBrandName(newBrand));
+}
+
+void handleSetBrand(JsonObjectConst obj) {
+  if (obj.containsKey("value")) {
+    setBrand(parseBrand(obj["value"]));
+    Serial.printf("[MQTT] Brand set to: %s\n", getBrandName(parseBrand(obj["value"])));
+  }
+}
+
+void handleCustom(JsonObjectConst obj) {
+  if (!obj.containsKey("id")) {
+    Serial.println("[MQTT] FAIL: Missing 'id'");
+    return;
+  }
+  int deviceId = atoi(obj["id"]);
+  if (deviceId < 1 || deviceId > 5) {
+    Serial.printf("[MQTT] FAIL: Invalid ID: %d\n", deviceId);
+    return;
+  }
+  int deviceIndex = deviceId - 1;
+  if (!getLearnedDevice(deviceIndex).hasData) {
+    Serial.printf("[MQTT] FAIL: Device %d empty\n", deviceId);
+    return;
+  }
+  Serial.printf("[MQTT] Sending Device %d...\n", deviceId);
+  sendLearnedSignal(deviceIndex);
+  Serial.printf("[MQTT] OK: Device %d sent\n", deviceId);
+}
+
+void handleAlarmAdd(JsonObjectConst obj) {
+  int hour, minute;
+  if (!readAlarmTime(obj, &hour, &minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    Serial.println("[MQTT] FAIL: Invalid time");
+    return;
+  }
+  const char* name = readAlarmName(obj);
+  uint8_t days = obj.containsKey("days") ? (uint8_t)obj["days"].as<int>() : 0x7F;
+  if (addAlarm(hour, minute, name, days)) {
+    publishAlarmsToFirebase("mqtt");
+    Serial.println("[MQTT] OK: Alarm added");
+  }
+}
+
+void handleAlarmUpdate(JsonObjectConst obj) {
+  int index;
+  if (!readAlarmIndex(obj, &index) || index < 1 || index > MAX_ALARMS) {
+    Serial.println("[MQTT] FAIL: Invalid index");
+    return;
+  }
+  AlarmInfo current;
+  if (!getAlarmInfo(index - 1, &current)) {
+    Serial.println("[MQTT] FAIL: Alarm not found");
+    return;
+  }
+  int hour = current.hour, minute = current.minute;
+  applyOptionalTime(obj, &hour, &minute);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    Serial.println("[MQTT] FAIL: Invalid time");
+    return;
+  }
+  uint8_t days = obj.containsKey("days") ? (uint8_t)obj["days"].as<int>() : current.days;
+  if (updateAlarm(index - 1, hour, minute, readAlarmName(obj), days)) {
+    if (obj.containsKey("enabled")) setAlarmEnabled(index - 1, obj["enabled"].as<int>() != 0);
+    publishAlarmsToFirebase("mqtt");
+    Serial.println("[MQTT] OK: Alarm updated");
+  }
+}
+
+void handleAlarmDelete(JsonObjectConst obj) {
+  int index;
+  if (!readAlarmIndex(obj, &index) || index < 1 || index > MAX_ALARMS) {
+    Serial.println("[MQTT] FAIL: Invalid index");
+    return;
+  }
+  if (deleteAlarm(index - 1)) {
+    publishAlarmsToFirebase("mqtt");
+    Serial.println("[MQTT] OK: Alarm deleted");
+  }
+}
+
+void handleGetStatus(JsonObjectConst obj) { publishMqttStatus(getACState()); }
+
+}  // namespace CommandHandlers
+
+// ========================================
+// Command Dispatcher
+// ========================================
+
+struct CommandHandler {
+  const char* name;
+  void (*handler)(JsonObjectConst);
+};
+
+const CommandHandler HANDLERS[] = {
+  {"power_on", CommandHandlers::handlePowerOn},
+  {"power_off", CommandHandlers::handlePowerOff},
+  {"power_toggle", CommandHandlers::handlePowerToggle},
+  {"temp_up", CommandHandlers::handleTempUp},
+  {"temp_down", CommandHandlers::handleTempDown},
+  {"mode_cycle", CommandHandlers::handleModeCycle},
+  {"fan_cycle", CommandHandlers::handleFanCycle},
+  {"switch_brand", CommandHandlers::handleSwitchBrand},
+  {"get_status", CommandHandlers::handleGetStatus},
+  {"set_temperature", CommandHandlers::handleSetTemperature},
+  {"set_mode", CommandHandlers::handleSetMode},
+  {"set_fan", CommandHandlers::handleSetFan},
+  {"set_humidity_threshold", CommandHandlers::handleSetHumidityThreshold},
+  {"set_light_threshold", CommandHandlers::handleSetLightThreshold},
+  {"set_brand", CommandHandlers::handleSetBrand},
+  {"custom", CommandHandlers::handleCustom},
+  {"alarm_add", CommandHandlers::handleAlarmAdd},
+  {"alarm_update", CommandHandlers::handleAlarmUpdate},
+  {"alarm_delete", CommandHandlers::handleAlarmDelete}
+};
+
+bool dispatchCommand(const char* cmd, JsonObjectConst fields) {
+  for (size_t i = 0; i < sizeof(HANDLERS) / sizeof(HANDLERS[0]); i++) {
+    if (strcmp(cmd, HANDLERS[i].name) == 0) {
+      HANDLERS[i].handler(fields);
+      return true;
+    }
+  }
+  return false;
+}
+
+// ========================================
+// MQTT Connection Management
+// ========================================
+
 // Initialize MQTT broker connection
 void initMqttBroker() {
   Serial.println("\n========================================");
@@ -267,18 +515,7 @@ void mqttMessageHandler(String &topic, String &payload) {
       const char* brandStr = root["brand"];
       Serial.printf("[MQTT] -> Brand: %s\n", brandStr);
       
-      ACBrand brand = BRAND_PANASONIC; // Default
-      if (strcasecmp(brandStr, "Daikin") == 0) brand = BRAND_DAIKIN;
-      else if (strcasecmp(brandStr, "Mitsubishi") == 0) brand = BRAND_MITSUBISHI;
-      else if (strcasecmp(brandStr, "Panasonic") == 0) brand = BRAND_PANASONIC;
-      else if (strcasecmp(brandStr, "Gree") == 0 || strcasecmp(brandStr, "Greece") == 0) brand = BRAND_GREE;
-      else if (strcasecmp(brandStr, "Midea") == 0) brand = BRAND_MIDEA;
-      else if (strcasecmp(brandStr, "Haier") == 0) brand = BRAND_HAIER;
-      else if (strcasecmp(brandStr, "Samsung") == 0) brand = BRAND_SAMSUNG;
-      else if (strcasecmp(brandStr, "LG") == 0) brand = BRAND_LG;
-      else if (strcasecmp(brandStr, "Fujitsu") == 0) brand = BRAND_FUJITSU;
-      else if (strcasecmp(brandStr, "Hitachi") == 0) brand = BRAND_HITACHI;
-      
+      ACBrand brand = parseBrand(brandStr);
       setBrand(brand);
       Serial.printf("[MQTT] Brand set to: %s\n", getBrandName(brand));
     }
@@ -310,12 +547,7 @@ void mqttMessageHandler(String &topic, String &payload) {
       const char* modeStr = root["mode"];
       Serial.printf("[MQTT] -> Mode: %s\n", modeStr);
       
-      ACMode mode = MODE_AUTO;
-      if (strcmp(modeStr, "cool") == 0) mode = MODE_COOL;
-      else if (strcmp(modeStr, "heat") == 0) mode = MODE_HEAT;
-      else if (strcmp(modeStr, "dry") == 0) mode = MODE_DRY;
-      else if (strcmp(modeStr, "fan") == 0) mode = MODE_FAN;
-      
+      ACMode mode = parseMode(modeStr);
       acSetMode(mode);
     }
     
@@ -324,11 +556,7 @@ void mqttMessageHandler(String &topic, String &payload) {
       const char* fanStr = root["fan_speed"];
       Serial.printf("[MQTT] -> Fan: %s\n", fanStr);
       
-      FanSpeed fan = FAN_AUTO;
-      if (strcmp(fanStr, "low") == 0) fan = FAN_LOW;
-      else if (strcmp(fanStr, "medium") == 0 || strcmp(fanStr, "med") == 0) fan = FAN_MED;
-      else if (strcmp(fanStr, "high") == 0) fan = FAN_HIGH;
-      
+      FanSpeed fan = parseFanSpeed(fanStr);
       acSetFan(fan);
     }
     
@@ -339,258 +567,16 @@ void mqttMessageHandler(String &topic, String &payload) {
 
   // Fall back to old command format for backwards compatibility
   const char* command = commandFrom(doc);
-  if (command == nullptr) {
+  if (!command) {
     Serial.println("[MQTT] FAIL: No command in payload");
     return;
   }
 
   Serial.printf("[MQTT] Command: %s\n", command);
 
-  if (strcmp(command, "power_on") == 0) {
-    acPowerOn();
-  }
-  else if (strcmp(command, "power_off") == 0) {
-    acPowerOff();
-  }
-  else if (strcmp(command, "power_toggle") == 0) {
-    acPowerToggle();
-  }
-  else if (strcmp(command, "temp_up") == 0) {
-    acTempUp();
-  }
-  else if (strcmp(command, "temp_down") == 0) {
-    acTempDown();
-  }
-  else if (strcmp(command, "set_temperature") == 0) {
-    if (doc.containsKey("value")) {
-      int temp = doc["value"];
-      acSetTemp(temp);
-    }
-  }
-  else if (strcmp(command, "set_mode") == 0) {
-    if (doc.containsKey("value")) {
-      const char* modeStr = doc["value"];
-
-      ACMode mode = MODE_AUTO;
-      if (strcmp(modeStr, "cool") == 0) mode = MODE_COOL;
-      else if (strcmp(modeStr, "heat") == 0) mode = MODE_HEAT;
-      else if (strcmp(modeStr, "dry") == 0) mode = MODE_DRY;
-      else if (strcmp(modeStr, "fan") == 0) mode = MODE_FAN;
-
-      acSetMode(mode);
-    }
-  }
-  else if (strcmp(command, "set_fan") == 0) {
-    if (doc.containsKey("value")) {
-      const char* fanStr = doc["value"];
-
-      FanSpeed fan = FAN_AUTO;
-      if (strcmp(fanStr, "low") == 0) fan = FAN_LOW;
-      else if (strcmp(fanStr, "medium") == 0) fan = FAN_MED;
-      else if (strcmp(fanStr, "high") == 0) fan = FAN_HIGH;
-
-      acSetFan(fan);
-    }
-  }
-  else if (strcmp(command, "set_humidity_threshold") == 0) {
-    if (doc.containsKey("value")) {
-      float threshold = doc["value"];
-      setAutoDryThreshold(threshold);
-    } else {
-      Serial.println("[MQTT] FAIL: Missing 'value' for humidity threshold");
-    }
-  }
-  else if (strcmp(command, "set_light_threshold") == 0) {
-    if (doc.containsKey("value")) {
-      float threshold = doc["value"];
-      setSleepLightThreshold(threshold);
-    } else {
-      Serial.println("[MQTT] FAIL: Missing 'value' for light threshold");
-    }
-  }
-  else if (strcmp(command, "mode_cycle") == 0) {
-    acModeCycle();
-  }
-  else if (strcmp(command, "fan_cycle") == 0) {
-    acFanCycle();
-  }
-  else if (strcmp(command, "switch_brand") == 0) {
-    ACState state = getACState();
-    ACBrand newBrand = (ACBrand)((state.brand + 1) % BRAND_COUNT);
-    setBrand(newBrand);
-    Serial.printf("[MQTT] Brand switched to: %s\n", getBrandName(newBrand));
-  }
-  else if (strcmp(command, "set_brand") == 0) {
-    if (doc.containsKey("value")) {
-      const char* brandStr = doc["value"];
-
-      ACBrand brand = BRAND_DAIKIN;
-      if (strcmp(brandStr, "daikin") == 0) brand = BRAND_DAIKIN;
-      else if (strcmp(brandStr, "mitsubishi") == 0) brand = BRAND_MITSUBISHI;
-      else if (strcmp(brandStr, "panasonic") == 0) brand = BRAND_PANASONIC;
-      else if (strcmp(brandStr, "gree") == 0) brand = BRAND_GREE;
-      else if (strcmp(brandStr, "midea") == 0) brand = BRAND_MIDEA;
-      else if (strcmp(brandStr, "haier") == 0) brand = BRAND_HAIER;
-      else if (strcmp(brandStr, "samsung") == 0) brand = BRAND_SAMSUNG;
-      else if (strcmp(brandStr, "lg") == 0) brand = BRAND_LG;
-      else if (strcmp(brandStr, "fujitsu") == 0) brand = BRAND_FUJITSU;
-      else if (strcmp(brandStr, "hitachi") == 0) brand = BRAND_HITACHI;
-      else {
-        Serial.printf("[MQTT] FAIL: Unknown brand: %s\n", brandStr);
-        Serial.println("[MQTT] -------------------------------\n");
-        return;
-      }
-
-      setBrand(brand);
-      Serial.printf("[MQTT] Brand set to: %s\n", getBrandName(brand));
-    }
-  }
-  else if (strcmp(command, "custom") == 0) {
-    if (doc.containsKey("id")) {
-      const char* idStr = doc["id"];
-      int deviceId = atoi(idStr);
-
-      if (deviceId < 1 || deviceId > 5) {
-        Serial.printf("[MQTT] FAIL: Invalid device ID: %d (must be 1-5)\n", deviceId);
-        Serial.println("[MQTT] -------------------------------\n");
-        return;
-      }
-
-      int deviceIndex = deviceId - 1;
-      LearnedDevice device = getLearnedDevice(deviceIndex);
-      if (!device.hasData) {
-        Serial.printf("[MQTT] FAIL: Device %d empty (no learned signal)\n", deviceId);
-        Serial.println("[MQTT] -------------------------------\n");
-        return;
-      }
-
-      Serial.printf("[MQTT] Sending custom signal from Device %d...\n", deviceId);
-      sendLearnedSignal(deviceIndex);
-      Serial.printf("[MQTT] OK: Custom signal sent (Device %d)\n", deviceId);
-    } else {
-      Serial.println("[MQTT] FAIL: Missing 'id' parameter");
-      Serial.println("[MQTT]   Usage: {\"command\":\"custom\",\"id\":\"1\"}");
-    }
-  }
-  else if (strcmp(command, "alarm_add") == 0) {
-    JsonObjectConst fields = alarmFieldsFrom(doc);
-    int hour = -1;
-    int minute = -1;
-    if (!readAlarmTime(fields, &hour, &minute)) {
-      Serial.println("[MQTT] FAIL: Missing alarm time");
-      Serial.println("[MQTT]   Usage: {\"command\":\"alarm_add\",\"hour\":7,\"minute\":30,\"name\":\"alarm\"}");
-      Serial.println("[MQTT]          {\"command\":\"alarm_add\",\"time\":\"07:30\",\"name\":\"alarm\"}");
-      Serial.println("[MQTT] -------------------------------\n");
-      return;
-    }
-
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      Serial.println("[MQTT] FAIL: Invalid alarm time");
-      Serial.println("[MQTT] -------------------------------\n");
-      return;
-    }
-
-    const char* name = readAlarmName(fields);
-    Serial.printf("[MQTT] Alarm add name: %s\n", name ? name : "<default>");
-    if (name && name[0] == '\0') {
-      name = nullptr;
-    }
-
-    // Read days parameter (default to all days if not specified)
-    uint8_t days = 0x7F;  // Default to all days
-    if (fields.containsKey("days")) {
-      int daysValue = fields["days"];
-      if (daysValue >= 0 && daysValue <= 127) {
-        days = (uint8_t)daysValue;
-      }
-    }
-    Serial.printf("[MQTT] Alarm days bitmask: 0x%02X\n", days);
-
-    if (addAlarm((uint8_t)hour, (uint8_t)minute, name, days)) {
-      publishAlarmsToFirebase("mqtt");
-      Serial.println("[MQTT] OK: Alarm added");
-    }
-  }
-  else if (strcmp(command, "alarm_update") == 0) {
-    JsonObjectConst fields = alarmFieldsFrom(doc);
-    int index = -1;
-    if (!readAlarmIndex(fields, &index)) {
-      Serial.println("[MQTT] FAIL: Missing alarm index");
-      Serial.println("[MQTT]   Usage: {\"command\":\"alarm_update\",\"index\":1,\"hour\":7,\"minute\":30,\"name\":\"alarm\"}");
-      Serial.println("[MQTT]          {\"command\":\"alarm_update\",\"index\":1,\"time\":\"07:30\",\"name\":\"alarm\"}");
-      Serial.println("[MQTT] -------------------------------\n");
-      return;
-    }
-
-    if (index < 1 || index > MAX_ALARMS) {
-      Serial.println("[MQTT] FAIL: Invalid alarm index");
-      Serial.println("[MQTT] -------------------------------\n");
-      return;
-    }
-    AlarmInfo current;
-    if (!getAlarmInfo((uint8_t)(index - 1), &current)) {
-      Serial.println("[MQTT] FAIL: Alarm not found");
-      Serial.println("[MQTT] -------------------------------\n");
-      return;
-    }
-
-    int hour = current.hour;
-    int minute = current.minute;
-    applyOptionalTime(fields, &hour, &minute);
-    if (hour < 0 || hour > 23 || minute < 0 || minute > 59) {
-      Serial.println("[MQTT] FAIL: Invalid alarm time");
-      Serial.println("[MQTT] -------------------------------\n");
-      return;
-    }
-
-    const char* name = readAlarmName(fields);
-    Serial.printf("[MQTT] Alarm update index=%d name: %s\n", index, name ? name : "<keep>");
-
-    // Read days parameter (default to current value)
-    uint8_t days = current.days;
-    if (fields.containsKey("days")) {
-      int daysValue = fields["days"];
-      if (daysValue >= 0 && daysValue <= 127) {
-        days = (uint8_t)daysValue;
-      }
-    }
-    Serial.printf("[MQTT] Alarm days bitmask: 0x%02X\n", days);
-
-    if (updateAlarm((uint8_t)(index - 1), (uint8_t)hour, (uint8_t)minute, name, days)) {
-      // Handle enabled status if provided
-      if (fields.containsKey("enabled")) {
-        int enabledValue = fields["enabled"];
-        setAlarmEnabled((uint8_t)(index - 1), enabledValue != 0);
-      }
-      publishAlarmsToFirebase("mqtt");
-      Serial.println("[MQTT] OK: Alarm updated");
-    }
-  }
-  else if (strcmp(command, "alarm_delete") == 0) {
-    JsonObjectConst fields = alarmFieldsFrom(doc);
-    int index = -1;
-    if (!readAlarmIndex(fields, &index)) {
-      Serial.println("[MQTT] FAIL: Missing alarm index");
-      Serial.println("[MQTT]   Usage: {\"command\":\"alarm_delete\",\"index\":1}");
-      Serial.println("[MQTT] -------------------------------\n");
-      return;
-    }
-
-    if (index < 1 || index > MAX_ALARMS) {
-      Serial.println("[MQTT] FAIL: Invalid alarm index");
-      Serial.println("[MQTT] -------------------------------\n");
-      return;
-    }
-
-    if (deleteAlarm((uint8_t)(index - 1))) {
-      publishAlarmsToFirebase("mqtt");
-      Serial.println("[MQTT] OK: Alarm deleted");
-    }
-  }
-  else if (strcmp(command, "get_status") == 0) {
-    publishMqttStatus(getACState());
-  }
-  else {
+  JsonObjectConst fields = alarmFieldsFrom(doc);
+  
+  if (!dispatchCommand(command, fields)) {
     Serial.printf("[MQTT] FAIL: Unknown command: %s\n", command);
   }
 
