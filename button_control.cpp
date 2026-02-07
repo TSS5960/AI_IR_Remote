@@ -6,7 +6,7 @@
 #include "display.h"
 #include "speaker_control.h"
 #include "wifi_manager.h"
-#include "ir_learning.h"
+#include "ir_learning_enhanced.h"
 #include "alarm_manager.h"
 #include <WiFi.h>
 
