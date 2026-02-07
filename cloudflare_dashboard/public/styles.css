@@ -232,12 +232,12 @@ body {
   grid-column: span 12;
 }
 
-.sensors {
-  grid-column: span 7;
+.alarms {
+  grid-column: span 12;
 }
 
-.alarms {
-  grid-column: span 5;
+.sensors {
+  grid-column: span 12;
 }
 
 .custom {
@@ -260,9 +260,10 @@ body {
 
 .alarm-table-head {
   display: grid;
-  grid-template-columns: minmax(100px, 0.6fr) minmax(120px, 0.8fr) minmax(0, 1.4fr) auto;
+  grid-template-columns: 80px 150px minmax(120px, 1fr) minmax(240px, 2fr) 140px;
   gap: 12px;
-  margin: 8px 0 10px;
+  margin: 12px 0;
+  padding: 0 4px;
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -271,18 +272,112 @@ body {
 
 .alarm-item {
   display: grid;
-  grid-template-columns: minmax(100px, 0.6fr) minmax(120px, 0.8fr) minmax(0, 1.4fr) auto;
+  grid-template-columns: 80px 150px minmax(120px, 1fr) minmax(240px, 2fr) 140px;
   gap: 12px;
   align-items: center;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(31, 42, 51, 0.08);
-  background: rgba(31, 42, 51, 0.04);
+  padding: 16px;
+  margin-bottom: 12px;
+  border-radius: 18px;
+  border: 1.5px solid rgba(31, 42, 51, 0.1);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(249, 250, 251, 0.9));
+  box-shadow: 0 2px 8px rgba(31, 42, 51, 0.06);
+  transition: all 0.2s ease;
+}
+
+.alarm-item:hover {
+  border-color: rgba(31, 42, 51, 0.15);
+  box-shadow: 0 4px 12px rgba(31, 42, 51, 0.1);
+  transform: translateY(-1px);
 }
 
 .alarm-slot {
-  display: grid;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.alarm-name-input {
+  width: 100%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(31, 42, 51, 0.12);
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--ink);
+  background: white;
+  transition: all 0.2s ease;
+}
+
+.alarm-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 133, 51, 0.1);
+}
+
+.alarm-days-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
   gap: 6px;
+  align-items: center;
+}
+
+.day-checkbox-small {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+}
+
+.day-checkbox-small input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.day-checkbox-small label {
+  display: inline-block;
+  padding: 6px 9px;
+  border-radius: 7px;
+  border: 1.5px solid rgba(31, 42, 51, 0.15);
+  background: white;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  min-width: 38px;
+  text-align: center;
+}
+
+.day-checkbox-small:hover label {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.day-checkbox-small input[type="checkbox"]:checked + label {
+  background: linear-gradient(135deg, var(--accent), #FF9D5C);
+  border-color: var(--accent);
+  color: white;
+  box-shadow: 0 2px 6px rgba(255, 133, 51, 0.3);
+}
+
+.alarm-name-input::placeholder {
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.alarm-days-display {
+  font-size: 0.85rem;
+  color: var(--foreground);
+  font-weight: 500;
+  padding: 6px 10px;
+  background: rgba(31, 42, 51, 0.06);
+  border-radius: 10px;
+  display: inline-block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 130px;
 }
 
 .alarm-index {
@@ -290,33 +385,167 @@ body {
   font-weight: 600;
 }
 
-.alarm-status {
+.alarm-toggle-status {
   font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  color: var(--muted);
+  letter-spacing: 0.12em;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-weight: 700;
+  min-width: 52px;
 }
 
-.alarm-name-input,
+.alarm-toggle-status.enabled {
+  background: linear-gradient(135deg, #4CAF50, #66BB6A);
+  color: white;
+  box-shadow: 0 2px 6px rgba(76, 175, 80, 0.3);
+}
+
+.alarm-toggle-status.enabled:hover {
+  background: linear-gradient(135deg, #66BB6A, #4CAF50);
+  box-shadow: 0 4px 10px rgba(76, 175, 80, 0.4);
+  transform: translateY(-1px);
+}
+
+.alarm-toggle-status.disabled {
+  background: linear-gradient(135deg, #9E9E9E, #BDBDBD);
+  color: white;
+  box-shadow: 0 2px 6px rgba(128, 128, 128, 0.2);
+}
+
+.alarm-toggle-status.disabled:hover {
+  background: linear-gradient(135deg, #BDBDBD, #9E9E9E);
+  box-shadow: 0 4px 10px rgba(128, 128, 128, 0.3);
+  transform: translateY(-1px);
+}
+
 .alarm-time-input {
   width: 100%;
-  padding: 8px 10px;
-  border-radius: 12px;
-  border: 1px solid var(--border);
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(31, 42, 51, 0.12);
   font-family: "IBM Plex Mono", ui-monospace, monospace;
   font-size: 0.9rem;
+  font-weight: 600;
+  background: white;
+  color: var(--foreground);
+  transition: all 0.2s ease;
 }
 
-.alarm-actions {
+.alarm-time-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 133, 51, 0.1);
+}
   display: inline-flex;
   gap: 8px;
 }
 
 .alarm-form {
   display: grid;
-  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) auto;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  align-items: stretch;
+  padding: 20px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.9), rgba(249, 250, 251, 0.95));
+  border-radius: 18px;
+  border: 1.5px solid rgba(31, 42, 51, 0.1);
+  box-shadow: 0 2px 8px rgba(31, 42, 51, 0.06);
+}
+
+.alarm-form > .btn {
+  justify-self: stretch;
+  padding: 12px;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.alarm-days {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.alarm-days label:first-child {
+  display: flex;
+  align-items: center;
   gap: 12px;
-  align-items: end;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.btn-select-all-days {
+  font-size: 0.7rem;
+  padding: 6px 14px;
+  border-radius: 8px;
+  border: 1.5px solid rgba(31, 42, 51, 0.15);
+  background: white;
+  cursor: pointer;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--foreground);
+  transition: all 0.2s ease;
+}
+
+.btn-select-all-days:hover {
+  border-color: var(--accent);
+  background: rgba(255, 133, 51, 0.08);
+  color: var(--accent);
+  transform: translateY(-1px);
+}
+
+.day-checkboxes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.day-checkbox {
+  position: relative;
+  cursor: pointer;
+  user-select: none;
+}
+
+.day-checkbox input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.day-checkbox label {
+  display: inline-block;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 2px solid rgba(31, 42, 51, 0.15);
+  background: white;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  cursor: pointer;
+  min-width: 44px;
+  text-align: center;
+}
+
+.day-checkbox:hover label {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(255, 133, 51, 0.15);
+}
+
+.day-checkbox input[type="checkbox"]:checked + label {
+  background: linear-gradient(135deg, var(--accent), #FF9D5C);
+  border-color: var(--accent);
+  color: white;
+  box-shadow: 0 4px 12px rgba(255, 133, 51, 0.35);
+  transform: translateY(-2px);
 }
 
 .alarm-input label {
@@ -325,16 +554,59 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--muted);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  font-weight: 600;
 }
 
 .alarm-input input {
   width: 100%;
-  padding: 10px 12px;
+  padding: 12px 14px;
   border-radius: 14px;
-  border: 1px solid var(--border);
+  border: 1.5px solid rgba(31, 42, 51, 0.12);
   font-size: 0.95rem;
   font-family: "IBM Plex Mono", ui-monospace, monospace;
+  background: white;
+  transition: all 0.2s ease;
+}
+
+.alarm-input input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(255, 133, 51, 0.1);
+}
+
+.alarm-actions {
+  display: inline-flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.alarm-update {
+  background: linear-gradient(135deg, #4CAF50, #66BB6A);
+  color: white;
+  border: none;
+  padding: 7px 14px;
+  font-size: 0.8rem;
+  box-shadow: 0 2px 6px rgba(76, 175, 80, 0.25);
+}
+
+.alarm-update:hover {
+  box-shadow: 0 4px 10px rgba(76, 175, 80, 0.35);
+  transform: translateY(-2px);
+}
+
+.alarm-delete {
+  background: linear-gradient(135deg, #f44336, #e57373);
+  color: white;
+  border: none;
+  padding: 7px 14px;
+  font-size: 0.8rem;
+  box-shadow: 0 2px 6px rgba(244, 67, 54, 0.25);
+}
+
+.alarm-delete:hover {
+  box-shadow: 0 4px 12px rgba(244, 67, 54, 0.35);
+  transform: translateY(-2px);
 }
 
 .alarm-empty {
@@ -448,9 +720,15 @@ body {
 }
 
 .btn.accent {
-  background: var(--accent);
+  background: linear-gradient(135deg, var(--accent), #FF9D5C);
   color: #fff;
   border-color: transparent;
+  box-shadow: 0 4px 12px rgba(255, 133, 51, 0.3);
+}
+
+.btn.accent:hover {
+  box-shadow: 0 6px 18px rgba(255, 133, 51, 0.4);
+  transform: translateY(-2px);
 }
 
 .btn.is-active {
@@ -460,7 +738,14 @@ body {
 }
 
 .btn.ghost {
+  background: white;
+  border: 1.5px solid rgba(31, 42, 51, 0.15);
+  color: var(--ink);
+}
+
+.btn.ghost:hover {
   background: rgba(31, 42, 51, 0.05);
+  border-color: var(--accent);
 }
 
 .control-row {
@@ -738,6 +1023,7 @@ body {
 
   .alarm-actions {
     justify-content: flex-start;
+    gap: 8px;
   }
 
   .alarm-form {

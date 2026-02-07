@@ -49,15 +49,16 @@
         <span id="currentBrand"></span>
       </div>
 
-      <section class="card alarms" style="--delay: 0.2s">
+      <section class="card alarms" style="--delay: 0.15s">
         <div class="card-header">
           <h2>Alarms</h2>
           <span class="chip subtle" id="alarmCount">0 saved</span>
         </div>
         <div class="alarm-table-head">
-          <span>Slot</span>
+          <span>Status</span>
           <span>Time</span>
           <span>Name</span>
+          <span>Days</span>
           <span>Actions</span>
         </div>
         <div class="alarm-list" id="alarmList"></div>
@@ -69,6 +70,42 @@
           <div class="alarm-input">
             <label for="alarmName">Name</label>
             <input type="text" id="alarmName" placeholder="alarm clock 1" maxlength="31" />
+          </div>
+          <div class="alarm-days">
+            <label>
+              Repeat on:
+              <button type="button" class="btn-select-all-days">Select All</button>
+            </label>
+            <div class="day-checkboxes">
+              <div class="day-checkbox">
+                <input type="checkbox" value="0" id="day-0">
+                <label for="day-0">Sun</label>
+              </div>
+              <div class="day-checkbox">
+                <input type="checkbox" value="1" id="day-1">
+                <label for="day-1">Mon</label>
+              </div>
+              <div class="day-checkbox">
+                <input type="checkbox" value="2" id="day-2">
+                <label for="day-2">Tue</label>
+              </div>
+              <div class="day-checkbox">
+                <input type="checkbox" value="3" id="day-3">
+                <label for="day-3">Wed</label>
+              </div>
+              <div class="day-checkbox">
+                <input type="checkbox" value="4" id="day-4">
+                <label for="day-4">Thu</label>
+              </div>
+              <div class="day-checkbox">
+                <input type="checkbox" value="5" id="day-5">
+                <label for="day-5">Fri</label>
+              </div>
+              <div class="day-checkbox">
+                <input type="checkbox" value="6" id="day-6">
+                <label for="day-6">Sat</label>
+              </div>
+            </div>
           </div>
           <button class="btn accent" id="alarmAddBtn">Add Alarm</button>
         </div>

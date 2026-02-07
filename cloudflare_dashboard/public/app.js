@@ -575,7 +575,8 @@ function normalizeAlarmRecord(record) {
   }
   const name = record.name != null ? String(record.name) : "";
   const enabled = record.enabled === false ? false : Boolean(record.enabled ?? true);
-  return { hour, minute, name, enabled };
+  const days = record.days !== undefined ? Number(record.days) : 127;
+  return { hour, minute, name, enabled, days };
 }
 
 function renderAlarms(alarms) {
@@ -593,7 +594,7 @@ function renderAlarms(alarms) {
   }
 
   const signature = alarms
-    .map((alarm) => `${alarm.hour}:${alarm.minute}:${alarm.enabled}:${alarm.name}`)
+    .map((alarm) => `${alarm.hour}:${alarm.minute}:${alarm.enabled}:${alarm.name}:${alarm.days || 127}`)
     .join("|");
   if (signature === lastAlarmSignature) {
     return;
@@ -608,14 +609,33 @@ function renderAlarms(alarms) {
       const nameValue = alarm.name || `alarm clock ${index + 1}`;
       const safeName = escapeHtml(nameValue);
       const statusLabel = alarm.enabled ? "ON" : "OFF";
+      const statusClass = alarm.enabled ? "enabled" : "disabled";
+      const days = alarm.days !== undefined ? alarm.days : 127; // Default to all days (0x7F)
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      const activeDays = dayNames.filter((_, i) => (days & (1 << i)) !== 0).join(', ');
+      const daysDisplay = days === 127 ? 'Every day' : (activeDays || 'No days');
+      
+      console.log(`Alarm ${index + 1} data:`, { name: alarm.name, days: alarm.days, activeDays, daysDisplay });
+      
+      // Generate day checkboxes
+      const dayCheckboxes = dayNames.map((day, i) => {
+        const checked = (days & (1 << i)) !== 0 ? 'checked' : '';
+        return `
+          <div class="day-checkbox-small">
+            <input type="checkbox" value="${i}" id="alarm-${index + 1}-day-${i}" ${checked}>
+            <label for="alarm-${index + 1}-day-${i}">${day}</label>
+          </div>
+        `;
+      }).join('');
+      
       return `
         <div class="alarm-item" data-index="${index + 1}">
           <div class="alarm-slot">
-            <span class="alarm-index">Alarm ${index + 1}</span>
-            <span class="alarm-status">${statusLabel}</span>
+            <button class="alarm-toggle-status ${statusClass}" title="Click to toggle enabled/disabled">${statusLabel}</button>
           </div>
           <input type="time" class="alarm-time-input" value="${timeValue}" />
-          <input type="text" class="alarm-name-input" value="${safeName}" maxlength="31" />
+          <input type="text" class="alarm-name-input" value="${safeName}" maxlength="31" placeholder="Enter name" />
+          <div class="alarm-days-checkboxes">${dayCheckboxes}</div>
           <div class="alarm-actions">
             <button class="btn ghost alarm-update">Save</button>
             <button class="btn alarm-delete">Delete</button>
@@ -1892,6 +1912,13 @@ function buildCommandPayload(command, payload) {
     if (name) {
       commandPayload.name = name;
     }
+    // Add days parameter (default to all days if not specified)
+    const days = Number(payload.days);
+    if (Number.isInteger(days) && days >= 0 && days <= 127) {
+      commandPayload.days = days;
+    } else {
+      commandPayload.days = 127; // Default to all days
+    }
   }
 
   if (command === "alarm_update") {
@@ -1910,6 +1937,17 @@ function buildCommandPayload(command, payload) {
     const name = sanitizeAlarmName(payload.name);
     if (name) {
       commandPayload.name = name;
+    }
+    // Add days parameter if provided (optional, will preserve existing if not specified)
+    if (payload.days !== undefined) {
+      const days = Number(payload.days);
+      if (Number.isInteger(days) && days >= 0 && days <= 127) {
+        commandPayload.days = days;
+      }
+    }
+    // Add enabled parameter if provided
+    if (payload.enabled !== undefined) {
+      commandPayload.enabled = payload.enabled ? 1 : 0;
     }
   }
 
@@ -2114,10 +2152,36 @@ if (alarmAddBtn) {
       return;
     }
     const name = sanitizeAlarmName(alarmNameInput?.value || "");
-    await sendAlarmCommand("alarm_add", { hour: parsed.hour, minute: parsed.minute, name });
+    
+    // Get selected days
+    const dayCheckboxes = document.querySelectorAll('.alarm-form .day-checkbox input[type="checkbox"]');
+    let days = 0;
+    dayCheckboxes.forEach(checkbox => {
+      if (checkbox.checked) {
+        days |= (1 << parseInt(checkbox.value));
+      }
+    });
+    
+    // If no days selected, default to all days
+    if (days === 0) days = 0x7F;
+    
+    await sendAlarmCommand("alarm_add", { hour: parsed.hour, minute: parsed.minute, name, days });
     if (alarmNameInput) {
       alarmNameInput.value = "";
     }
+  });
+}
+
+// Select All Days button
+const selectAllDaysBtn = document.querySelector('.btn-select-all-days');
+if (selectAllDaysBtn) {
+  selectAllDaysBtn.addEventListener("click", () => {
+    const dayCheckboxes = document.querySelectorAll('.alarm-form .day-checkbox input[type="checkbox"]');
+    const allChecked = Array.from(dayCheckboxes).every(cb => cb.checked);
+    dayCheckboxes.forEach(checkbox => {
+      checkbox.checked = !allChecked;
+    });
+    selectAllDaysBtn.textContent = allChecked ? 'Select All' : 'Deselect All';
   });
 }
 
@@ -2135,6 +2199,43 @@ if (alarmList) {
     if (!Number.isInteger(index)) {
       return;
     }
+    
+    // Handle status toggle
+    if (target.classList.contains("alarm-toggle-status")) {
+      // Toggle between enabled and disabled by updating the alarm
+      const timeValue = row.querySelector(".alarm-time-input")?.value;
+      const parsed = parseAlarmTime(timeValue);
+      if (!parsed) {
+        setStatus("warn", "Invalid alarm time");
+        return;
+      }
+      const nameValue = row.querySelector(".alarm-name-input")?.value;
+      const name = sanitizeAlarmName(nameValue || "");
+      
+      // Get days from checkboxes
+      const dayCheckboxes = row.querySelectorAll('.alarm-days-checkboxes input[type="checkbox"]');
+      let days = 0;
+      dayCheckboxes.forEach(checkbox => {
+        if (checkbox.checked) {
+          days |= (1 << parseInt(checkbox.value));
+        }
+      });
+      if (days === 0) days = 127;
+      
+      // Get current status and toggle it
+      const currentlyEnabled = target.classList.contains("enabled");
+      
+      await sendAlarmCommand("alarm_update", {
+        index,
+        hour: parsed.hour,
+        minute: parsed.minute,
+        name,
+        days,
+        enabled: currentlyEnabled ? 0 : 1
+      });
+      return;
+    }
+    
     if (target.classList.contains("alarm-delete")) {
       await sendAlarmCommand("alarm_delete", { index });
       return;
@@ -2149,11 +2250,23 @@ if (alarmList) {
       }
       const nameValue = row.querySelector(".alarm-name-input")?.value;
       const name = sanitizeAlarmName(nameValue || "");
+      
+      // Get days from checkboxes
+      const dayCheckboxes = row.querySelectorAll('.alarm-days-checkboxes input[type="checkbox"]');
+      let days = 0;
+      dayCheckboxes.forEach(checkbox => {
+        if (checkbox.checked) {
+          days |= (1 << parseInt(checkbox.value));
+        }
+      });
+      if (days === 0) days = 127; // Default to all days if none selected
+      
       await sendAlarmCommand("alarm_update", {
         index,
         hour: parsed.hour,
         minute: parsed.minute,
-        name
+        name,
+        days
       });
     }
   });
