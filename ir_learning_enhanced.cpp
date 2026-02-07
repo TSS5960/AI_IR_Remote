@@ -4,15 +4,13 @@
  */
 
 #include "ir_learning_enhanced.h"
-#include <EEPROM.h>
+#include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include <IRsend.h>  // Required for IRsend class
 #include <esp_task_wdt.h>  // Watchdog timer
 
-#define EEPROM_SIZE 4096
-#define EEPROM_MAGIC 0xABCE  // Different magic for enhanced version
-#define EEPROM_VERSION 2
-#define EEPROM_START_ADDR 100
+#define IR_SIGNALS_FILE "/ir_signals.dat"
+#define IR_CONFIG_VERSION 3
 
 extern IRrecv irrecv;
 extern IRsend irsend;
@@ -44,7 +42,11 @@ int deviceButtonToSignal(int device, int button) {
 void initIRLearningEnhanced() {
   Serial.println("[IR Learn+] Initializing ENHANCED IR learning module...");
   
-  EEPROM.begin(EEPROM_SIZE);
+  // Initialize SPIFFS if not already done
+  if (!SPIFFS.begin(true)) {
+    Serial.println("[IR Learn+] ✗ SPIFFS initialization failed!");
+    return;
+  }
   
   // Calculate and display memory usage
   size_t buttonSize = sizeof(LearnedButton);
@@ -53,16 +55,8 @@ void initIRLearningEnhanced() {
   
   Serial.printf("[IR Learn+] Button size: %d bytes\n", buttonSize);
   Serial.printf("[IR Learn+] Device size: %d bytes\n", deviceSize);
-  Serial.printf("[IR Learn+] Total storage: %d / %d bytes (%.1f%%)\n", 
-                totalSize, EEPROM_SIZE, (totalSize * 100.0) / EEPROM_SIZE);
-  
-  if (totalSize > EEPROM_SIZE) {
-    Serial.println("[IR Learn+] ✗ ERROR: Storage exceeds EEPROM size!");
-    Serial.println("[IR Learn+]   Reduce MAX_IR_BUFFER_SIZE in ir_learning_enhanced.h");
-    return;
-  }
-  
-  Serial.println("[IR Learn+] ✓ Memory check passed");
+  Serial.printf("[IR Learn+] Total storage: %d bytes\n", totalSize);
+  Serial.println("[IR Learn+] ✓ Using SPIFFS for persistent storage");
   
   // Initialize all devices
   for (int i = 0; i < MAX_LEARNED_DEVICES; i++) {
@@ -1025,135 +1019,75 @@ void clearLearnedButton(int deviceIndex, int buttonIndex) {
 // === Storage Functions (Optimized) ===
 
 void saveDeviceIncremental(int deviceIndex) {
-  if (deviceIndex < 0 || deviceIndex >= MAX_LEARNED_DEVICES) return;
-  
-  Serial.printf("[IR Learn+] 💾 Saving device %d...\n", deviceIndex);
-  
-  // Feed watchdog to prevent reset during long operation
-  esp_task_wdt_reset();
-  
-  // Calculate address for this device
-  int addr = EEPROM_START_ADDR + sizeof(uint16_t) + sizeof(uint8_t);
-  addr += deviceIndex * (sizeof(LearnedDevice));
-  
-  // Check if size fits in EEPROM
-  size_t deviceSize = sizeof(LearnedDevice);
-  size_t requiredSize = addr + deviceSize;
-  
-  if (requiredSize > EEPROM_SIZE) {
-    Serial.printf("[IR Learn+] ✗ ERROR: Device too large! Need %d bytes, have %d\n", 
-                  requiredSize, EEPROM_SIZE);
-    Serial.printf("[IR Learn+]   Device size: %d bytes\n", deviceSize);
-    return;
-  }
-  
-  // Save entire device structure
-  EEPROM.put(addr, learnedDevices[deviceIndex]);
-  
-  // Feed watchdog again before commit
-  esp_task_wdt_reset();
-  
-  // Commit with retry logic and watchdog feeding
-  bool saved = false;
-  for (int retry = 0; retry < 3; retry++) {
-    esp_task_wdt_reset();  // Feed watchdog before each attempt
-    
-    if (EEPROM.commit()) {
-      saved = true;
-      break;
-    }
-    delay(100);
-    Serial.printf("[IR Learn+] Retry %d...\n", retry + 1);
-  }
-  
-  if (saved) {
-    Serial.println("[IR Learn+] ✓ Device saved to EEPROM");
-    
-    // Feed watchdog before verification
-    esp_task_wdt_reset();
-    
-    // Verify by reading back
-    LearnedDevice verify;
-    EEPROM.get(addr, verify);
-    if (verify.hasData == learnedDevices[deviceIndex].hasData && 
-        verify.buttonCount == learnedDevices[deviceIndex].buttonCount) {
-      Serial.println("[IR Learn+] ✓ Verification passed");
-    } else {
-      Serial.println("[IR Learn+] ⚠ Verification failed - data may be corrupted!");
-    }
-  } else {
-    Serial.println("[IR Learn+] ✗ EEPROM commit FAILED after 3 retries!");
-  }
-  
-  delay(50);  // Give EEPROM time to complete write
-  esp_task_wdt_reset();  // Final watchdog feed
+  // Just save all devices - SPIFFS write is fast enough
+  saveLearnedDevicesEnhanced();
 }
 
 void saveLearnedDevicesEnhanced() {
-  Serial.println("[IR Learn+] 💾 Saving all devices...");
+  Serial.println("[IR Learn+] 💾 Saving all devices to SPIFFS...");
   
-  // Feed watchdog
   esp_task_wdt_reset();
   
-  // Write magic and version
-  uint16_t magic = EEPROM_MAGIC;
-  uint8_t version = EEPROM_VERSION;
-  
-  EEPROM.put(EEPROM_START_ADDR, magic);
-  EEPROM.put(EEPROM_START_ADDR + sizeof(uint16_t), version);
-  
-  // Save all devices with watchdog feeding
-  int addr = EEPROM_START_ADDR + sizeof(uint16_t) + sizeof(uint8_t);
-  for (int i = 0; i < MAX_LEARNED_DEVICES; i++) {
-    esp_task_wdt_reset();  // Feed watchdog for each device
-    EEPROM.put(addr, learnedDevices[i]);
-    addr += sizeof(LearnedDevice);
-    delay(10);  // Small delay between writes
-  }
-  
-  // Feed watchdog before commit
-  esp_task_wdt_reset();
-  
-  if (EEPROM.commit()) {
-    Serial.println("[IR Learn+] ✓ All devices saved to EEPROM");
-  } else {
-    Serial.println("[IR Learn+] ✗ EEPROM commit FAILED!");
-  }
-  
-  delay(100);  // Give EEPROM time to complete write
-  esp_task_wdt_reset();  // Final watchdog feed
-}
-
-void loadLearnedDevicesEnhanced() {
-  Serial.println("[IR Learn+] 📂 Loading devices from EEPROM...");
-  
-  uint16_t magic;
-  uint8_t version;
-  
-  EEPROM.get(EEPROM_START_ADDR, magic);
-  EEPROM.get(EEPROM_START_ADDR + sizeof(uint16_t), version);
-  
-  if (magic != EEPROM_MAGIC) {
-    Serial.println("[IR Learn+] No valid data found, initializing...");
-    saveLearnedDevicesEnhanced();
+  File file = SPIFFS.open(IR_SIGNALS_FILE, "w");
+  if (!file) {
+    Serial.println("[IR Learn+] ✗ Failed to open file for writing!");
     return;
   }
   
-  if (version != EEPROM_VERSION) {
+  // Write version header
+  uint8_t version = IR_CONFIG_VERSION;
+  file.write(&version, sizeof(uint8_t));
+  
+  // Write all devices
+  for (int i = 0; i < MAX_LEARNED_DEVICES; i++) {
+    esp_task_wdt_reset();
+    file.write((uint8_t*)&learnedDevices[i], sizeof(LearnedDevice));
+  }
+  
+  file.close();
+  
+  Serial.println("[IR Learn+] ✓ All devices saved to SPIFFS");
+  Serial.printf("[IR Learn+]   File size: %d bytes\n", 
+                sizeof(uint8_t) + (MAX_LEARNED_DEVICES * sizeof(LearnedDevice)));
+  
+  esp_task_wdt_reset();
+}
+
+void loadLearnedDevicesEnhanced() {
+  Serial.println("[IR Learn+] 📂 Loading devices from SPIFFS...");
+  
+  if (!SPIFFS.exists(IR_SIGNALS_FILE)) {
+    Serial.println("[IR Learn+] No saved data found, starting fresh");
+    return;
+  }
+  
+  File file = SPIFFS.open(IR_SIGNALS_FILE, "r");
+  if (!file) {
+    Serial.println("[IR Learn+] ✗ Failed to open file for reading!");
+    return;
+  }
+  
+  // Read version
+  uint8_t version;
+  file.read((uint8_t*)&version, sizeof(uint8_t));
+  
+  if (version != IR_CONFIG_VERSION) {
     Serial.printf("[IR Learn+] ⚠ Version mismatch (found: %d, expected: %d)\n", 
-                  version, EEPROM_VERSION);
-    Serial.println("[IR Learn+] Re-initializing storage...");
-    saveLearnedDevicesEnhanced();
+                  version, IR_CONFIG_VERSION);
+    file.close();
     return;
   }
   
   // Load all devices
-  int addr = EEPROM_START_ADDR + sizeof(uint16_t) + sizeof(uint8_t);
   int loadedCount = 0;
   
   for (int i = 0; i < MAX_LEARNED_DEVICES; i++) {
-    EEPROM.get(addr, learnedDevices[i]);
-    addr += sizeof(LearnedDevice);
+    size_t bytesRead = file.read((uint8_t*)&learnedDevices[i], sizeof(LearnedDevice));
+    
+    if (bytesRead != sizeof(LearnedDevice)) {
+      Serial.printf("[IR Learn+] ⚠ Incomplete read for device %d\n", i + 1);
+      break;
+    }
     
     if (learnedDevices[i].hasData) {
       Serial.printf("[IR Learn+] ✓ Device %d: %s (%d buttons)\n", 
@@ -1174,6 +1108,8 @@ void loadLearnedDevicesEnhanced() {
     }
   }
   
+  file.close();
+  
   if (loadedCount == 0) {
     Serial.println("[IR Learn+] No learned devices found");
   } else {
@@ -1185,29 +1121,33 @@ void loadLearnedDevicesEnhanced() {
 
 void verifyEEPROMData() {
   Serial.println("\n╔════════════════════════════════════════╗");
-  Serial.println("║ EEPROM Data Verification");
+  Serial.println("║ SPIFFS Data Verification");
   Serial.println("╚════════════════════════════════════════╝\n");
   
-  // Check magic and version
-  uint16_t magic;
-  uint8_t version;
-  EEPROM.get(EEPROM_START_ADDR, magic);
-  EEPROM.get(EEPROM_START_ADDR + sizeof(uint16_t), version);
+  if (!SPIFFS.exists(IR_SIGNALS_FILE)) {
+    Serial.println("File does not exist: ✗");
+    return;
+  }
   
-  Serial.printf("Magic:     0x%04X (expected: 0x%04X) %s\n", 
-                magic, EEPROM_MAGIC, (magic == EEPROM_MAGIC) ? "✓" : "✗");
+  File file = SPIFFS.open(IR_SIGNALS_FILE, "r");
+  if (!file) {
+    Serial.println("Cannot open file: ✗");
+    return;
+  }
+  
+  uint8_t version;
+  file.read((uint8_t*)&version, sizeof(uint8_t));
+  file.close();
+  
+  Serial.printf("File exists: ✓\n");
   Serial.printf("Version:   %d (expected: %d) %s\n", 
-                version, EEPROM_VERSION, (version == EEPROM_VERSION) ? "✓" : "✗");
-  Serial.printf("EEPROM Size: %d bytes\n", EEPROM_SIZE);
-  Serial.printf("Start Addr:  %d\n", EEPROM_START_ADDR);
+                version, IR_CONFIG_VERSION, (version == IR_CONFIG_VERSION) ? "✓" : "✗");
+  
+  size_t fileSize = SPIFFS.open(IR_SIGNALS_FILE, "r").size();
+  Serial.printf("File size: %d bytes\n", fileSize);
   Serial.printf("Device Size: %d bytes\n", sizeof(LearnedDevice));
   Serial.printf("Button Size: %d bytes\n", sizeof(LearnedButton));
   Serial.println();
-  
-  if (magic != EEPROM_MAGIC) {
-    Serial.println("✗ Invalid magic - EEPROM not initialized!");
-    return;
-  }
   
   // Count learned signals
   int totalSignals = 0;
@@ -1220,8 +1160,8 @@ void verifyEEPROMData() {
   }
   
   Serial.printf("Total Learned Signals: %d / %d\n", totalSignals, TOTAL_SIGNALS);
-  Serial.printf("Storage Used: ~%d bytes\n\n", 
-                sizeof(uint16_t) + sizeof(uint8_t) + (MAX_LEARNED_DEVICES * sizeof(LearnedDevice)));
+  Serial.printf("Expected file size: ~%d bytes\n\n", 
+                sizeof(uint8_t) + (MAX_LEARNED_DEVICES * sizeof(LearnedDevice)));
 }
 
 // === Diagnostic Functions ===

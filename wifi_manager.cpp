@@ -3,6 +3,8 @@
  */
 
 #include "wifi_manager.h"
+#include "ir_learning_enhanced.h"
+#include <ArduinoJson.h>
 
 #define WIFI_CONFIG_FILE "/wifi_config.txt"
 #define AP_SSID "ESP32_AC_Remote"
@@ -287,6 +289,136 @@ void handleSave() {
   }
 }
 
+// IR Signal API - Get all signals
+void handleGetSignals() {
+  DynamicJsonDocument doc(8192);
+  JsonArray signals = doc.createNestedArray("signals");
+  
+  for (int i = 0; i < TOTAL_SIGNALS; i++) {
+    JsonObject signal = signals.createNestedObject();
+    signal["index"] = i;
+    signal["id"] = i + 1;  // 1-based ID for display
+    signal["name"] = getSignalName(i);
+    signal["learned"] = isSignalLearned(i);
+    
+    if (isSignalLearned(i)) {
+      LearnedButton btn = getSignal(i);
+      signal["protocol"] = typeToString(btn.protocol);
+      signal["value"] = String((unsigned long long)btn.value, HEX);
+      signal["bits"] = btn.bits;
+    }
+  }
+  
+  doc["total"] = TOTAL_SIGNALS;
+  doc["learned"] = countLearnedSignals();
+  
+  String response;
+  serializeJson(doc, response);
+  
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", response);
+  
+  Serial.printf("[API] Sent %d signals (%d learned)\n", TOTAL_SIGNALS, countLearnedSignals());
+}
+
+// IR Signal API - Update signal name
+void handleUpdateSignalName() {
+  if (!server.hasArg("plain")) {
+    server.send(400, "application/json", "{\"error\":\"No body\"}");
+    return;
+  }
+  
+  String body = server.arg("plain");
+  DynamicJsonDocument doc(512);
+  DeserializationError error = deserializeJson(doc, body);
+  
+  if (error) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+  
+  int signalIndex = doc["index"];
+  const char* newName = doc["name"];
+  
+  if (signalIndex < 0 || signalIndex >= TOTAL_SIGNALS) {
+    server.send(400, "application/json", "{\"error\":\"Invalid signal index\"}");
+    return;
+  }
+  
+  if (newName == nullptr || strlen(newName) == 0) {
+    server.send(400, "application/json", "{\"error\":\"Name cannot be empty\"}");
+    return;
+  }
+  
+  setSignalName(signalIndex, newName);
+  saveLearnedDevicesEnhanced();  // Save to EEPROM
+  
+  DynamicJsonDocument response(256);
+  response["success"] = true;
+  response["index"] = signalIndex;
+  response["name"] = getSignalName(signalIndex);
+  
+  String responseStr;
+  serializeJson(response, responseStr);
+  
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", responseStr);
+  
+  Serial.printf("[API] Updated signal %d name to: %s\n", signalIndex + 1, newName);
+}
+
+// IR Signal API - Send signal
+void handleSendSignal() {
+  if (!server.hasArg("plain")) {
+    server.send(400, "application/json", "{\"error\":\"No body\"}");
+    return;
+  }
+  
+  String body = server.arg("plain");
+  DynamicJsonDocument doc(256);
+  DeserializationError error = deserializeJson(doc, body);
+  
+  if (error) {
+    server.send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+    return;
+  }
+  
+  int signalIndex = doc["index"];
+  
+  if (signalIndex < 0 || signalIndex >= TOTAL_SIGNALS) {
+    server.send(400, "application/json", "{\"error\":\"Invalid signal index\"}");
+    return;
+  }
+  
+  if (!isSignalLearned(signalIndex)) {
+    server.send(400, "application/json", "{\"error\":\"Signal not learned\"}");
+    return;
+  }
+  
+  bool success = sendSignal(signalIndex);
+  
+  DynamicJsonDocument response(256);
+  response["success"] = success;
+  response["index"] = signalIndex;
+  response["name"] = getSignalName(signalIndex);
+  
+  String responseStr;
+  serializeJson(response, responseStr);
+  
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(success ? 200 : 500, "application/json", responseStr);
+  
+  Serial.printf("[API] Sent signal %d: %s\n", signalIndex + 1, getSignalName(signalIndex));
+}
+
+// Handle CORS preflight
+void handleCORS() {
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.sendHeader("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
+  server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+  server.send(204);
+}
+
 // Initialize WiFi Manager
 void initWiFiManager() {
   Serial.println("\n========================================");
@@ -346,9 +478,19 @@ void startConfigPortal() {
   // Setup web server
   server.on("/", handleRoot);
   server.on("/save", HTTP_POST, handleSave);
+  
+  // IR Signal API endpoints
+  server.on("/api/signals", HTTP_OPTIONS, handleCORS);
+  server.on("/api/signals", HTTP_GET, handleGetSignals);
+  server.on("/api/signals/update", HTTP_OPTIONS, handleCORS);
+  server.on("/api/signals/update", HTTP_POST, handleUpdateSignalName);
+  server.on("/api/signals/send", HTTP_OPTIONS, handleCORS);
+  server.on("/api/signals/send", HTTP_POST, handleSendSignal);
+  
   server.begin();
   
   Serial.println("[WiFi] Web server started");
+  Serial.println("[WiFi] API endpoints enabled");
 }
 
 // Try to connect to saved WiFi
@@ -376,6 +518,18 @@ bool connectToWiFi() {
     Serial.printf("[WiFi]   IP Address: %s\n", WiFi.localIP().toString().c_str());
     Serial.printf("[WiFi]   Signal Strength: %d dBm\n", WiFi.RSSI());
     Serial.printf("[WiFi]   MAC Address: %s\n", WiFi.macAddress().c_str());
+    
+    // Start web server for API endpoints
+    server.on("/api/signals", HTTP_OPTIONS, handleCORS);
+    server.on("/api/signals", HTTP_GET, handleGetSignals);
+    server.on("/api/signals/update", HTTP_OPTIONS, handleCORS);
+    server.on("/api/signals/update", HTTP_POST, handleUpdateSignalName);
+    server.on("/api/signals/send", HTTP_OPTIONS, handleCORS);
+    server.on("/api/signals/send", HTTP_POST, handleSendSignal);
+    server.begin();
+    Serial.println("[WiFi] API server started");
+    Serial.printf("[WiFi]   Accessible at: http://%s/api/signals\n", WiFi.localIP().toString().c_str());
+    
     return true;
   }
   
@@ -389,7 +543,8 @@ bool connectToWiFi() {
 
 // Handle web server in loop
 void handleWiFiManager() {
-  if (portalActive) {
+  // Handle server in both portal mode and normal WiFi mode
+  if (portalActive || WiFi.status() == WL_CONNECTED) {
     server.handleClient();
   }
 }

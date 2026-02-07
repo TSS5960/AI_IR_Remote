@@ -478,6 +478,7 @@ void drawIRLearnScreen() {
   LearnState state = getLearnState();
   bool isLearned = isSignalLearned(currentSignal);
   int learnedCount = countLearnedSignals();
+  const char* signalName = getSignalName(currentSignal);
   
   // Title
   tft.setTextColor(TFT_CYAN);
@@ -485,14 +486,28 @@ void drawIRLearnScreen() {
   tft.setCursor(20, 20);
   tft.println("IR LEARN");
   
-  // Current signal
+  // Current signal with name
   tft.setTextColor(TFT_WHITE);
   tft.setTextSize(2);
   tft.setCursor(10, 60);
   tft.printf("Signal: %d / %d", currentSignal + 1, TOTAL_SIGNALS);
   
+  // Show signal name prominently if it's not the default
+  char defaultName[32];
+  snprintf(defaultName, sizeof(defaultName), "Signal_%d", currentSignal + 1);
+  if (strcmp(signalName, defaultName) != 0) {
+    tft.setTextColor(TFT_YELLOW);
+    tft.setTextSize(2);
+    tft.setCursor(10, 85);
+    // Truncate long names to fit screen
+    char displayName[20];
+    strncpy(displayName, signalName, 19);
+    displayName[19] = '\0';
+    tft.printf("'%s'", displayName);
+  }
+  
   // Signal status
-  int yPos = 90;
+  int yPos = strcmp(signalName, defaultName) != 0 ? 115 : 90;
   if (isLearned) {
     LearnedButton signal = getSignal(currentSignal);
     
@@ -500,16 +515,11 @@ void drawIRLearnScreen() {
     tft.setCursor(10, yPos);
     tft.print("Status: Learned");
     
-    yPos += 25;
+    yPos += 20;
     tft.setTextColor(TFT_YELLOW);
     tft.setTextSize(1);
     tft.setCursor(10, yPos);
     
-    // Show signal name
-    tft.printf("Name: %s", signal.buttonName);
-    
-    yPos += 20;
-    tft.setCursor(10, yPos);
     String protocolStr = String(typeToString(signal.protocol));
     if (protocolStr.length() > 20) {
       protocolStr = protocolStr.substring(0, 17) + "...";
@@ -518,14 +528,10 @@ void drawIRLearnScreen() {
     
     // Show quality score if available
     if (signal.metadata.signalQuality > 0) {
-      yPos += 20;
+      yPos += 15;
       tft.setCursor(10, yPos);
       tft.printf("Quality: %d/100", signal.metadata.signalQuality);
     }
-    
-    yPos += 15;
-    tft.setCursor(10, yPos);
-    tft.printf("Value: 0x%llX", signal.value);
   } else {
     tft.setTextColor(TFT_RED);
     tft.setCursor(10, yPos);
