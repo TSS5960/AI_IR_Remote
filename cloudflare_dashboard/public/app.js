@@ -2159,17 +2159,21 @@ if (alarmList) {
   });
 }
 
-setTempBtn.addEventListener("click", () => {
-  const value = Number(setTempInput.value);
-  if (Number.isFinite(value)) {
-    currentTemp.textContent = formatNumber(value, null, 2);
-    sendCommand("set_temperature", { value });
-  }
-});
+if (setTempBtn) {
+  setTempBtn.addEventListener("click", () => {
+    const value = Number(setTempInput.value);
+    if (Number.isFinite(value)) {
+      if (currentTemp) currentTemp.textContent = formatNumber(value, null, 2);
+      sendCommand("set_temperature", { value });
+    }
+  });
+}
 
-setBrandBtn.addEventListener("click", () => {
-  sendCommand("set_brand", { value: brandSelect.value });
-});
+if (setBrandBtn) {
+  setBrandBtn.addEventListener("click", () => {
+    sendCommand("set_brand", { value: brandSelect.value });
+  });
+}
 
 if (dryThresholdRange && dryThresholdValue) {
   dryThresholdRange.addEventListener("input", () => {
@@ -2242,3 +2246,6 @@ setPowerControls(false);
 updatePowerButtons(false);
 setInterval(fetchStatus, REFRESH_INTERVAL_MS);
 setInterval(fetchAlarms, ALARM_REFRESH_INTERVAL_MS);
+
+// Expose mqttPublish globally for AC Manager
+window.mqttPublish = mqttPublish;

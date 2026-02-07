@@ -11,6 +11,7 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="ac-manager.css" />
   </head>
   <body>
     <div class="bg-orb orb-a"></div>
@@ -34,173 +35,19 @@
     </header>
 
     <main class="grid">
+      <!-- AC Manager Section -->
       <section class="card hero-controls" style="--delay: 0.05s">
-        <div class="hero-block">
-          <div class="card-header">
-            <h2>Live State</h2>
-            <span class="chip" id="powerState">Power: --</span>
-          </div>
-          <div class="hero-temp">
-            <div class="temp-value" id="currentTemp">--</div>
-            <div class="temp-unit">℃</div>
-          </div>
-          <div class="hero-meta">
-            <div>
-              <span class="label">Mode</span>
-              <span id="currentMode">--</span>
-            </div>
-            <div>
-              <span class="label">Fan</span>
-              <span id="currentFan">--</span>
-            </div>
-            <div>
-              <span class="label">Brand</span>
-              <span id="currentBrand">--</span>
-            </div>
-          </div>
-          <div class="hero-actions">
-            <div class="power-group">
-              <button class="btn" id="powerOnBtn" data-command="power_on">Power On</button>
-              <button class="btn" id="powerOffBtn" data-command="power_off">Power Off</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="section-divider"></div>
-
-        <div class="controls-block">
-          <h2>Temperature</h2>
-          <div class="control-row">
-            <button class="btn" data-command="temp_down" data-requires-power>Temp -</button>
-            <input
-              type="number"
-              id="setTemp"
-              min="16"
-              max="30"
-              step="1"
-              value="24"
-              data-requires-power
-            />
-            <button class="btn" data-command="temp_up" data-requires-power>Temp +</button>
-            <button class="btn accent" id="setTempBtn" data-requires-power>Set Temp</button>
-          </div>
-
-          <h2>Mode</h2>
-          <div class="button-grid">
-            <button class="btn ghost" data-command="set_mode" data-value="auto" data-requires-power>
-              Auto
-            </button>
-            <button class="btn ghost" data-command="set_mode" data-value="cool" data-requires-power>
-              Cool
-            </button>
-            <button class="btn ghost" data-command="set_mode" data-value="heat" data-requires-power>
-              Heat
-            </button>
-            <button class="btn ghost" data-command="set_mode" data-value="dry" data-requires-power>
-              Dry
-            </button>
-            <button class="btn ghost" data-command="set_mode" data-value="fan" data-requires-power>
-              Fan
-            </button>
-            <button class="btn" data-command="mode_cycle" data-requires-power>Cycle</button>
-          </div>
-
-          <h2>Fan Speed</h2>
-          <div class="button-grid">
-            <button class="btn ghost" data-command="set_fan" data-value="auto" data-requires-power>
-              Auto
-            </button>
-            <button class="btn ghost" data-command="set_fan" data-value="low" data-requires-power>
-              Low
-            </button>
-            <button class="btn ghost" data-command="set_fan" data-value="medium" data-requires-power>
-              Medium
-            </button>
-            <button class="btn ghost" data-command="set_fan" data-value="high" data-requires-power>
-              High
-            </button>
-            <button class="btn" data-command="fan_cycle" data-requires-power>Cycle</button>
-          </div>
-
-          <h2>Auto Dry</h2>
-          <div class="auto-setting">
-            <div class="auto-setting-row">
-              <span class="label">Humidity Threshold</span>
-              <span id="dryThresholdDisplay">--</span>
-            </div>
-            <div class="auto-setting-controls">
-              <input
-                type="range"
-                id="dryThresholdRange"
-                min="40"
-                max="85"
-                step="1"
-                value="65"
-              />
-              <input
-                type="number"
-                id="dryThresholdValue"
-                min="40"
-                max="85"
-                step="1"
-                value="65"
-              />
-              <button class="btn accent" id="dryThresholdBtn">Set Threshold</button>
-            </div>
-            <p class="hint">
-              When humidity exceeds the threshold, the device switches to Dry mode.
-            </p>
-          </div>
-
-          <h2>Sleep Mode</h2>
-          <div class="auto-setting">
-            <div class="auto-setting-row">
-              <span class="label">Light Threshold</span>
-              <span id="sleepLightDisplay">--</span>
-            </div>
-            <div class="auto-setting-controls">
-              <input
-                type="range"
-                id="sleepLightRange"
-                min="1"
-                max="1000"
-                step="1"
-                value="30"
-              />
-              <input
-                type="number"
-                id="sleepLightValue"
-                min="1"
-                max="1000"
-                step="1"
-                value="30"
-              />
-              <button class="btn accent" id="sleepLightBtn">Set Threshold</button>
-            </div>
-            <p class="hint">
-              When light drops below the threshold, the fan speed is lowered.
-            </p>
-          </div>
-
-          <h2>Brand</h2>
-          <div class="brand-row">
-            <select id="brandSelect">
-              <option value="daikin">Daikin</option>
-              <option value="mitsubishi">Mitsubishi</option>
-              <option value="panasonic">Panasonic</option>
-              <option value="gree">Gree</option>
-              <option value="midea">Midea</option>
-              <option value="haier">Haier</option>
-              <option value="samsung">Samsung</option>
-              <option value="lg">LG</option>
-              <option value="fujitsu">Fujitsu</option>
-              <option value="hitachi">Hitachi</option>
-            </select>
-            <button class="btn accent" id="setBrandBtn">Set Brand</button>
-            <button class="btn" data-command="switch_brand">Cycle</button>
-          </div>
-        </div>
+        <div id="ac-manager"></div>
       </section>
+
+      <!-- Hidden elements for app.js compatibility -->
+      <div style="display: none;">
+        <span id="powerState"></span>
+        <span id="currentTemp"></span>
+        <span id="currentMode"></span>
+        <span id="currentFan"></span>
+        <span id="currentBrand"></span>
+      </div>
 
       <section class="card alarms" style="--delay: 0.2s">
         <div class="card-header">
@@ -334,6 +181,7 @@
     </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+    <script src="ac-manager.js"></script>
     <script src="app.js"></script>
   </body>
 </html>

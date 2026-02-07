@@ -1,0 +1,439 @@
+/* AC Manager Styles */
+
+#ac-manager {
+  width: 100%;
+}
+
+.ac-manager-panel {
+  display: grid;
+  grid-template-columns: 350px 1fr;
+  gap: 24px;
+  min-height: 600px;
+  max-height: 800px;
+}
+
+.ac-list-section {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 20px;
+  overflow-y: auto;
+  max-height: 750px;
+}
+
+.ac-control-section {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  padding: 24px;
+  overflow-y: auto;
+  max-height: 750px;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.section-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.ac-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.no-acs {
+  text-align: center;
+  color: #888;
+  padding: 40px 20px;
+}
+
+/* AC Card */
+.ac-card {
+  background: var(--bg-tertiary, #2a2a2a);
+  border-radius: 8px;
+  padding: 16px;
+  border: 2px solid transparent;
+  transition: all 0.3s ease;
+}
+
+.ac-card.active {
+  border-color: #4CAF50;
+}
+
+.ac-card:hover {
+  transform: translateX(4px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.ac-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.ac-card-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.ac-brand {
+  font-size: 0.85rem;
+  color: #888;
+  background: #333;
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.ac-card-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 8px 0;
+}
+
+.ac-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.status-indicator {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.status-indicator.on {
+  background: #4CAF50;
+  box-shadow: 0 0 8px #4CAF50;
+}
+
+.status-indicator.off {
+  background: #666;
+}
+
+.ac-temp {
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.ac-mode {
+  font-size: 0.85rem;
+  color: #aaa;
+}
+
+.ac-card-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Buttons */
+.btn-primary, .btn-secondary, .btn-icon {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: #2196F3;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #1976D2;
+}
+
+.btn-secondary {
+  background: #666;
+  color: white;
+}
+
+.btn-secondary:hover {
+  background: #777;
+}
+
+.btn-icon {
+  background: #333;
+  color: white;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  flex: 1;
+}
+
+.btn-icon:hover {
+  background: #444;
+}
+
+.btn-icon.danger:hover {
+  background: #f44336;
+}
+
+/* AC Control Section */
+.ac-control-panel h2 {
+  margin-top: 0;
+}
+
+.ac-location {
+  color: #888;
+  margin-bottom: 24px;
+}
+
+.placeholder {
+  text-align: center;
+  color: #666;
+  padding: 60px 20px;
+  font-size: 1.1rem;
+}
+
+/* Power Control */
+.power-control {
+  margin-bottom: 32px;
+}
+
+.power-btn {
+  width: 100%;
+  padding: 20px;
+  font-size: 1.2rem;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+.power-btn.on {
+  background: #4CAF50;
+  color: white;
+}
+
+.power-btn.off {
+  background: #666;
+  color: white;
+}
+
+.power-btn:hover {
+  transform: scale(1.02);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+
+.power-icon {
+  font-size: 1.5rem;
+}
+
+/* Temperature Control */
+.temp-control {
+  margin-bottom: 24px;
+}
+
+.temp-control label {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+}
+
+.temp-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.temp-controls button {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: none;
+  background: #333;
+  color: white;
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.temp-controls button:hover {
+  background: #2196F3;
+}
+
+.temp-controls input[type="range"] {
+  flex: 1;
+  height: 8px;
+  border-radius: 4px;
+  background: #333;
+  outline: none;
+}
+
+.temp-controls input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #2196F3;
+  cursor: pointer;
+}
+
+/* Mode and Fan Controls */
+.mode-control, .fan-control {
+  margin-bottom: 24px;
+}
+
+.mode-control label, .fan-control label {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 1.1rem;
+}
+
+.mode-buttons, .fan-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mode-btn, .fan-btn {
+  flex: 1;
+  min-width: 80px;
+  padding: 12px;
+  border-radius: 8px;
+  border: 2px solid #333;
+  background: #2a2a2a;
+  color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.mode-btn:hover, .fan-btn:hover {
+  border-color:#666;
+}
+
+.mode-btn.active, .fan-btn.active {
+  border-color: #2196F3;
+  background: #2196F3;
+}
+
+/* Automation Info */
+.automation-info {
+  margin-top: 32px;
+  padding: 16px;
+  background: #2a2a2a;
+  border-radius: 8px;
+}
+
+.automation-info h3 {
+  margin-top: 0;
+  font-size: 1rem;
+  color: #aaa;
+}
+
+.automation-info p {
+  margin: 8px 0;
+  color: #ccc;
+}
+
+/* Modal */
+.modal {
+  display: none;
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0,0,0,0.7);
+}
+
+.modal-content {
+  background-color: #1a1a1a;
+  margin: 5% auto;
+  padding: 32px;
+  border: 1px solid #333;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.close {
+  color: #aaa;
+  float: right;
+  font-size: 28px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.close:hover,
+.close:focus {
+  color: white;
+}
+
+/* Form Styles */
+.form-group {
+  margin-bottom: 20px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  color: #ccc;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid #333;
+  background: #2a2a2a;
+  color: white;
+  font-size: 1rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid #333;
+}
+
+.modal-content h2 {
+  margin-top: 0;
+  margin-bottom: 24px;
+}
+
+.modal-content h3 {
+  margin-top: 24px;
+  margin-bottom: 16px;
+  color: #aaa;
+  font-size: 1rem;
+  text-transform: uppercase;
+}
+
+/* Responsive */
+@media (max-width: 1024px) {
+  .ac-manager-panel {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
