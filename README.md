@@ -103,9 +103,22 @@ AC_IR_Remote/
 
 ### 1. Hardware Setup
 
-**Audio Connections:**
+**Display (ST7789 240x280):**
 ```
-INMP441 → ESP32-S3
+ST7789 TFT → ESP32-S3
+  VCC  → 3.3V
+  GND  → GND
+  MOSI → GPIO47
+  SCLK → GPIO21
+  DC   → GPIO40
+  RST  → GPIO45
+  BL   → GPIO42
+  CS   → Not connected (directly enabled)
+```
+
+**Audio System:**
+```
+INMP441 Microphone → ESP32-S3
   VDD → 3.3V
   GND → GND
   WS  → GPIO4
@@ -113,17 +126,59 @@ INMP441 → ESP32-S3
   SD  → GPIO6
   L/R → GND
 
-MAX98357 → ESP32-S3
-  VIN → 5V
-  GND → GND
+MAX98357 Amplifier → ESP32-S3
+  VIN  → 5V
+  GND  → GND
   BCLK → GPIO15
   LRC  → GPIO16
   DIN  → GPIO7
 
-NeoPixel → ESP32-S3
+NeoPixel RGB LED → ESP32-S3
   VDD → 5V
   GND → GND
   DIN → GPIO48
+```
+
+**IR System:**
+```
+IR Transmitter → ESP32-S3
+  VCC → 3.3V
+  GND → GND
+  DAT → GPIO8
+
+IR Receiver → ESP32-S3
+  VCC → 3.3V
+  GND → GND
+  OUT → GPIO9
+```
+
+**Sensors:**
+```
+DHT11 → ESP32-S3
+  VCC  → 3.3V
+  GND  → GND
+  DATA → GPIO17
+
+BH1750 Light Sensor → ESP32-S3
+  VCC → 3.3V
+  GND → GND
+  SDA → GPIO14
+  SCL → GPIO13
+
+PIR Motion Sensor → ESP32-S3
+  VCC → 5V
+  GND → GND
+  OUT → GPIO10
+```
+
+**Joystick:**
+```
+Analog Joystick → ESP32-S3
+  VCC → 3.3V
+  GND → GND
+  VRx → GPIO1
+  VRy → GPIO2
+  SW  → GPIO18
 ```
 
 ### 2. Software Setup
@@ -140,6 +195,43 @@ NeoPixel → ESP32-S3
    - `Firebase ESP32 Client`
    - `PubSubClient`
    - **Edge Impulse library** (see Wake Word Setup below)
+
+#### TFT_eSPI Library Configuration
+
+**Important:** The TFT_eSPI library requires manual pin configuration inside the library folder. (Don't ask me why, ask the creator of this library: https://github.com/Bodmer/TFT_eSPI)
+
+1. Navigate to your Arduino libraries folder:
+   ```
+   Windows: C:\Users\<username>\Documents\Arduino\libraries\TFT_eSPI\
+   Mac/Linux: ~/Arduino/libraries/TFT_eSPI/
+   ```
+
+2. Open `User_Setup.h` and make these changes:
+
+   ```cpp
+   // Comment out the default driver and enable ST7789:
+   // #define ILI9341_DRIVER
+   #define ST7789_DRIVER
+
+   // Set display size (240x280 for this project):
+   #define TFT_WIDTH  240
+   #define TFT_HEIGHT 280
+
+   // Define the pins for ESP32-S3:
+   #define TFT_MOSI 47
+   #define TFT_SCLK 21
+   #define TFT_CS   -1  // Not used (directly connected)
+   #define TFT_DC   40
+   #define TFT_RST  45
+   #define TFT_BL   42  // Backlight (optional, controlled in code)
+
+   // Enable hardware SPI:
+   #define USE_HSPI_PORT
+   ```
+
+3. Save the file and restart Arduino IDE.
+
+**Note:** Backlight control is handled separately in `config.h` via `TFT_BL_PIN`.
 
 #### Upload Firmware
 1. Connect ESP32-S3 via USB
