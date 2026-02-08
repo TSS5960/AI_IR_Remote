@@ -53,7 +53,7 @@ LLM_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 # Models
 WHISPER_MODEL = "whisper-large-v3"
-LLM_MODEL = "llama3-8b-8192"
+LLM_MODEL = "llama-3.1-8b-instant"  # Updated - llama3-8b was deprecated
 
 # System prompt for intent parsing
 SYSTEM_PROMPT = """You are a smart home assistant. Parse user commands and return JSON.

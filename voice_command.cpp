@@ -9,6 +9,7 @@
 #include "mic_control.h"
 #include "ac_control.h"
 #include "ir_learning_enhanced.h"
+#include "speaker_control.h"
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
 #include <Adafruit_NeoPixel.h>
@@ -437,29 +438,46 @@ static void executeActions(VoiceCommandResult* result) {
     if (action.type == "ac_on") {
       acState.power = true;
       sendACState(acState);
+      playVoice(VOICE_POWER_ON);
 
     } else if (action.type == "ac_off") {
       acState.power = false;
       sendACState(acState);
+      playVoice(VOICE_POWER_OFF);
 
     } else if (action.type == "ac_temp") {
       int temp = constrain(action.value, 16, 30);
       acState.temperature = temp;
       if (!acState.power) acState.power = true;
       sendACState(acState);
+      playTemperature(temp);
 
     } else if (action.type == "ac_mode") {
       acState.mode = (ACMode)action.value;
       if (!acState.power) acState.power = true;
       sendACState(acState);
+      // Play mode-specific feedback
+      switch (action.value) {
+        case 0: playVoice(VOICE_MODE_COOL); break;
+        case 1: playVoice(VOICE_MODE_HEAT); break;
+        case 2: playVoice(VOICE_MODE_DRY); break;
+        case 3: playVoice(VOICE_MODE_FAN); break;
+        case 4: playVoice(VOICE_MODE_AUTO); break;
+        default: playActionTone(); break;
+      }
 
     } else if (action.type == "ir_send") {
       int signalNum = constrain(action.value, 1, 40);
       sendSignal(signalNum - 1);  // Convert 1-40 to 0-39
+      playActionTone();
 
     } else {
       Serial.println("[Voice] Unknown action type: " + action.type);
+      playBeep(200, 100);  // Error beep
     }
+
+    // Small delay between actions for audio clarity
+    delay(100);
   }
 }
 
