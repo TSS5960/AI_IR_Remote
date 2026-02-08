@@ -20,9 +20,13 @@ An intelligent air conditioner remote control system based on ESP32-S3 with voic
   - Runs entirely on ESP32 (no cloud required)
   - ~100ms inference latency
   - Adjustable confidence threshold (default 80%)
+- **Speech Recognition**: Experimental integration with Groq console
+  - Uses console.groq.com for speech-to-text transcription
+  - Currently in experimental phase
+  - Requires internet connection
 - **Record & Playback**: 3-second audio recording with instant playback
 - **Voice Level Monitor**: Real-time audio RMS visualization
-- **LED Feedback**: NeoPixel RGB LED indicates wake word detection
+- **LED Feedback**: NeoPixel RGB LED indicates wake word detection and processing states
 
 ## Hardware Components
 
@@ -280,6 +284,11 @@ When "Hey Bob" is detected:
 1. Serial prints detection with confidence percentage
 2. NeoPixel LED turns white for 3 seconds
 3. Confirmation beep plays
+4. **Experimental**: Voice command recording starts (green LED)
+5. **Experimental**: Audio is sent to console.groq.com for transcription
+6. **Note**: Intent parsing and command execution not yet implemented
+
+**Current Status**: Wake word detection ✅ | Speech recognition ✅ (experimental) | Command execution ❌
 
 **Tuning Tips:**
 - Default threshold is 80% - increase if too many false positives
@@ -348,6 +357,131 @@ When "Hey Bob" is detected:
 #define IR_TX_PIN 12
 #define IR_RX_PIN 11
 ```
+
+## Future Enhancements (Experiment)
+
+### Voice Command Pipeline (NLP + LLM)
+
+**Current Status:**
+- ✅ **Wake Word Detection**: "Hey Bob" detection working (Edge Impulse)
+- ✅ **Speech Recognition**: Basic speech-to-text using console.groq.com (experimental)
+- ❌ **Intent Parsing**: LLM integration for command understanding (not implemented)
+- ❌ **Action Execution**: Voice command execution (not implemented)
+- ❌ **Text-to-Speech**: Voice responses (not implemented)
+
+The goal is to enable natural language voice commands like:
+- "Hey Bob, it's too hot" → Lower AC temperature
+- "Hey Bob, turn on the lights" → Control smart devices
+- "Hey Bob, I'm leaving" → Run "away" scene
+
+**Architecture:**
+```
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│ Wake Word   │ →  │ Listening   │ →  │ Speech-to-  │ →  │ LLM         │
+│ "Hey Bob"   │    │ Mode        │    │ Text API    │    │ (LLaMA 8B)  │
+│ (Edge       │    │ LED ON      │    │ (console.   │    │ Parse       │
+│ Impulse)    │    │ Record cmd  │    │ groq.com)   │    │ Intent      │
+│ ✅ Working  │    │ ✅ Working  │    │ ✅ Working  │    │ ❌ TODO     │
+└─────────────┘    └─────────────┘    │ (Experimental)│    └─────────────┘
+                          │                                      │
+                          ▼                                      ▼
+                   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+                   │ End of      │    │ Execute     │ ←  │ JSON        │
+                   │ Speech      │    │ Command     │    │ Response    │
+                   │ Detection   │    │ + TTS Reply │    │ {action:..} │
+                   │ ✅ Working  │    │ ❌ TODO     │    │ ❌ TODO     │
+                   └─────────────┘    └─────────────┘    └─────────────┘
+```
+
+**Current Flow (Implemented):**
+1. Wake word "Hey Bob" detected (Edge Impulse) ✅
+2. LED turns green → Listening mode starts ✅
+3. Record user's voice command (until silence detected or max ~10 sec) ✅
+4. LED turns blue → Processing starts ✅
+5. Send audio to console.groq.com → Get text ✅ (experimental)
+6. ❌ **STOP**: Intent parsing and execution not implemented
+
+**Next Steps (Not Implemented):**
+- Send text to LLM → Get structured JSON command
+- Execute command (AC control, IR signal, etc.)
+- Play TTS response through speaker
+
+**Speech-to-Text (Current Implementation):**
+- **console.groq.com**: Currently used for speech recognition (experimental)
+  - Free tier available
+  - High accuracy but requires internet connection
+  - Currently in testing phase
+
+**LLM for Intent Parsing (Future Options):**
+- **Hugging Face Inference API**: Free tier, many models available
+  - `meta-llama/Meta-Llama-3-8B-Instruct`
+  - `mistralai/Mistral-7B-Instruct-v0.2`
+  - `google/gemma-7b-it`
+- **Groq API**: Free tier, very fast inference (LLaMA 3 8B)
+- **Google Gemini API**: Free tier (15 RPM, 1M tokens/day)
+- **Cloudflare Workers AI**: Free tier (10K tokens/day)
+- **Ollama (self-hosted)**: Free, run LLaMA on your own server/PC
+
+**Example LLM Prompt:**
+```
+You are a smart home assistant. Parse the user command and return JSON.
+Available actions: ac_on, ac_off, ac_temp, ac_mode, ir_send, light_on, light_off
+
+User: "turn on the AC and set it to 24 degrees"
+Response: {"actions": [{"type": "ac_on"}, {"type": "ac_temp", "value": 24}]}
+```
+
+**Text-to-Speech Response:**
+- **Google Cloud TTS API**: Natural voices, multiple languages
+- **OpenAI TTS API**: Very natural, simple to use
+- **Eleven Labs API**: High quality voice cloning
+- **ESP32 local TTS**: Basic robotic voice, no cloud needed
+
+### Smart Home API Integration
+
+Use cloud APIs to control WiFi-compatible smart devices:
+
+**Google Home API**
+- Control Google Home compatible devices via API
+- Works with Nest, Philips Hue, TP-Link, etc.
+- OAuth2 authentication required
+
+**Amazon Alexa API**
+- Smart Home Skill API for device control
+- Works with Ring, Ecobee, Sengled, etc.
+
+**Tuya/Smart Life API**
+- Control thousands of cheap WiFi devices
+- Plugs, lights, switches, sensors
+- Local API available (no cloud dependency)
+
+**IFTTT Webhooks**
+- Trigger any IFTTT applet via HTTP
+- Connect to 700+ services
+
+### Zigbee Integration
+- **Zigbee Coordinator**: Add CC2652 or EFR32 Zigbee module
+- **Zigbee2MQTT Bridge**: Control Zigbee devices through existing MQTT
+- **Device Support**:
+  - Smart plugs and switches
+  - Light bulbs (Philips Hue, IKEA Tradfri)
+  - Sensors (door/window, motion, temperature)
+- **Local Control**: No cloud dependency, mesh network
+
+### Additional Protocols
+- **Matter**: Universal smart home standard (Google, Apple, Amazon compatible)
+- **Bluetooth Mesh**: BLE-based device control
+- **Thread**: IPv6-based mesh networking
+
+### Advanced Voice Features
+- **Multi-Wake Word**: Train additional wake words
+- **Speaker Identification**: Recognize different users
+- **Multi-language**: Train models for different languages
+
+### Automation
+- **Scene Control**: "Movie time" → Dim lights, set AC to 24°C
+- **Scheduled Routines**: Time-based automation
+- **Sensor Triggers**: Auto-adjust based on environment
 
 ## License
 

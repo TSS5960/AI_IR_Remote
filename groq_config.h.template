@@ -1,0 +1,55 @@
+/*
+ * Groq API Configuration Template
+ *
+ * Copy this file to groq_config.h and fill in your credentials.
+ * groq_config.h is gitignored to keep your API key private.
+ *
+ * Get your FREE API key from: https://console.groq.com
+ */
+
+#ifndef GROQ_CONFIG_H
+#define GROQ_CONFIG_H
+
+// ==============================================================================
+// GROQ API CONFIGURATION
+// ==============================================================================
+
+// Your Groq API key (starts with "gsk_")
+// Get it from: https://console.groq.com -> API Keys -> Create API Key
+#define GROQ_API_KEY "YOUR_GROQ_API_KEY_HERE"
+
+// ==============================================================================
+// API ENDPOINTS (don't modify unless Groq changes their API)
+// ==============================================================================
+
+#define GROQ_API_HOST "api.groq.com"
+#define GROQ_WHISPER_ENDPOINT "/openai/v1/audio/transcriptions"
+#define GROQ_LLM_ENDPOINT "/openai/v1/chat/completions"
+
+// ==============================================================================
+// MODEL CONFIGURATION
+// ==============================================================================
+
+// Speech-to-Text model
+#define GROQ_WHISPER_MODEL "whisper-large-v3"
+
+// LLM for intent parsing
+#define GROQ_LLM_MODEL "llama3-8b-8192"
+
+// ==============================================================================
+// VOICE COMMAND SETTINGS
+// ==============================================================================
+
+// Maximum recording duration (milliseconds)
+#define VOICE_MAX_RECORD_MS 10000
+
+// Silence detection threshold (RMS value)
+#define VOICE_SILENCE_THRESHOLD 500
+
+// Silence duration to stop recording (milliseconds)
+#define VOICE_SILENCE_DURATION_MS 1500
+
+// HTTP timeout for API calls (milliseconds)
+#define GROQ_API_TIMEOUT_MS 30000
+
+#endif // GROQ_CONFIG_H

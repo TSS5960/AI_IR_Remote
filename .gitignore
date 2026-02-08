@@ -1,6 +1,7 @@
 # Secrets and credentials
 secrets.h
 firebase_config.h
+groq_config.h
 cloudflare_dashboard/wrangler.toml
 AWSreomte/
 

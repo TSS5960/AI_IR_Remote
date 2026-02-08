@@ -9,6 +9,7 @@
 #include "speaker_control.h"
 #include "mic_control.h"
 #include "ei_wake_word.h"  // Edge Impulse wake word detection
+#include "voice_command.h"
 #include "wifi_manager.h"
 #include "firebase_client.h"
 #include "button_control.h"
@@ -189,6 +190,9 @@ void onWakeWordDetected(float confidence) {
 
   // Play a confirmation beep
   playActionTone();
+
+  // Start voice command mode
+  startVoiceCommand();
 }
 
 void setup() {
@@ -260,6 +264,13 @@ void setup() {
       Serial.println("[Firebase] Not configured (update firebase_config.h)");
     }
     Serial.println("[System] OK: NTP configured");
+
+    // Initialize voice command module
+    if (initVoiceCommand()) {
+      Serial.println("[VoiceCommand] OK: Voice command module initialized");
+    } else {
+      Serial.println("[VoiceCommand] ERROR: Voice command module failed to initialize");
+    }
   } else {
     Serial.println("[System] WiFi not connected");
     Serial.println("[System] Configure WiFi to enable Firebase");
@@ -300,6 +311,9 @@ void loop() {
   
   // Update Edge Impulse wake word detection (throttled to not block network)
   updateEIWakeWord();
+
+  // Update voice command module
+  updateVoiceCommand();
   
   // Handle wake word LED timer (turn off after 3 seconds)
   if (wakeWordLedActive && (millis() - wakeWordLedOnTime >= 3000)) {
