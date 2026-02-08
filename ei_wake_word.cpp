@@ -13,7 +13,7 @@
 // ========== Configuration ==========
 
 // Confidence threshold for wake word detection (0.0 - 1.0)
-static float confidenceThreshold = 0.85f;  // 85% confidence required
+static float confidenceThreshold = 0.80f;  // 80% confidence required
 
 // Cooldown between detections to prevent rapid re-triggering
 static const unsigned long DETECTION_COOLDOWN_MS = 2000;  // 2 seconds

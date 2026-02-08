@@ -9,9 +9,6 @@
 #include "config.h"
 #include <stdint.h>
 
-// Wake word callback function type
-typedef void (*WakeWordCallback)(void);
-
 // Initialize microphone
 bool initMicrophone();
 
@@ -33,27 +30,6 @@ int getAudioLevel();
 
 // Deinitialize microphone
 void deinitMicrophone();
-
-// ========== Wake Word Detection ==========
-
-// Start wake word detection (runs in background)
-// Continuously monitors audio for wake word pattern
-bool startWakeWordDetection();
-
-// Stop wake word detection
-void stopWakeWordDetection();
-
-// Set callback function to be called when wake word is detected
-void setWakeWordCallback(WakeWordCallback callback);
-
-// Check if wake word detection is active
-bool isWakeWordDetectionActive();
-
-// Update wake word detection (call this in loop())
-void updateWakeWordDetection();
-
-// Train/capture the wake word pattern (say "Hey Bob" when calling this)
-void trainWakeWord();
 
 // Test microphone - show voice levels in real-time
 void testMicrophoneLevel();
