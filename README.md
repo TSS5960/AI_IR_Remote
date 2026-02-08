@@ -223,7 +223,7 @@ The wake word detection will automatically start on boot.
    - Enter your WiFi SSID and password
 4. **Device reboots** and connects to your WiFi network
 
-### 5. Firebase Setup (Optional)
+### 5. Firebase Setup
 
 1. Copy templates:
    ```bash
@@ -282,13 +282,15 @@ Navigate using joystick (left/right):
 
 When "Hey Bob" is detected:
 1. Serial prints detection with confidence percentage
-2. NeoPixel LED turns white for 3 seconds
+2. NeoPixel LED turns blue
 3. Confirmation beep plays
-4. **Experimental**: Voice command recording starts (green LED)
-5. **Experimental**: Audio is sent to console.groq.com for transcription
-6. **Note**: Intent parsing and command execution not yet implemented
+4. Voice command recording starts (blue LED, stops after 5 seconds of inactivity)
+5. Audio is sent to Groq Whisper API for transcription
+6. Text is sent to LLaMA 3.1 8B for intent parsing
+7. Actions executed (AC control, IR signals) with voice feedback
+8. White LED flash, then returns to wake word listening
 
-**Current Status**: Wake word detection ✅ | Speech recognition ✅ (experimental) | Command execution ❌
+**Current Status**: Wake word detection ✅ | Speech recognition ✅ | Intent parsing ✅ | Command execution ✅ (experimental)
 
 **Tuning Tips:**
 - Default threshold is 80% - increase if too many false positives
@@ -358,65 +360,76 @@ When "Hey Bob" is detected:
 #define IR_RX_PIN 11
 ```
 
-## Future Enhancements (Experiment)
+## Voice Command Pipeline (Experimental)
 
-### Voice Command Pipeline (NLP + LLM)
+### Current Status
 
-**Current Status:**
-- ✅ **Wake Word Detection**: "Hey Bob" detection working (Edge Impulse)
-- ✅ **Speech Recognition**: Basic speech-to-text using console.groq.com (experimental)
-- ❌ **Intent Parsing**: LLM integration for command understanding (not implemented)
-- ❌ **Action Execution**: Voice command execution (not implemented)
-- ❌ **Text-to-Speech**: Voice responses (not implemented)
+**All core features implemented - testing and improving reliability:**
 
-The goal is to enable natural language voice commands like:
-- "Hey Bob, it's too hot" → Lower AC temperature
-- "Hey Bob, turn on the lights" → Control smart devices
-- "Hey Bob, I'm leaving" → Run "away" scene
+- ✅ **Wake Word Detection**: "Hey Bob" detection (Edge Impulse)
+- ✅ **Speech Recognition**: Groq Whisper API (whisper-large-v3)
+- ✅ **Intent Parsing**: Groq LLaMA 3.1 8B (llama-3.1-8b-instant)
+- ✅ **JSON Response**: Structured action parsing
+- ✅ **Action Execution**: AC control, IR signals
+- ✅ **Voice Feedback**: Audio responses via speaker
 
-**Architecture:**
+**Experimental - Still improving:**
+- Silence detection threshold tuning
+- Response reliability optimization
+- Error handling improvements
+
+### Supported Voice Commands
+
+| Command Example | Action |
+|-----------------|--------|
+| "Turn on the AC" | Powers on AC |
+| "Set temperature to 24 degrees" | Sets AC to 24°C |
+| "Switch to cooling mode" | Changes to cool mode |
+| "Turn off the AC" | Powers off AC |
+| "It's too hot" | Turns on AC + cool mode |
+
+### Architecture
+
 ```
 ┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│ Wake Word   │ →  │ Listening   │ →  │ Speech-to-  │ →  │ LLM         │
-│ "Hey Bob"   │    │ Mode        │    │ Text API    │    │ (LLaMA 8B)  │
-│ (Edge       │    │ LED ON      │    │ (console.   │    │ Parse       │
-│ Impulse)    │    │ Record cmd  │    │ groq.com)   │    │ Intent      │
-│ ✅ Working  │    │ ✅ Working  │    │ ✅ Working  │    │ ❌ TODO     │
-└─────────────┘    └─────────────┘    │ (Experimental)│    └─────────────┘
-                          │                                      │
-                          ▼                                      ▼
-                   ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-                   │ End of      │    │ Execute     │ ←  │ JSON        │
-                   │ Speech      │    │ Command     │    │ Response    │
-                   │ Detection   │    │ + TTS Reply │    │ {action:..} │
-                   │ ✅ Working  │    │ ❌ TODO     │    │ ❌ TODO     │
-                   └─────────────┘    └─────────────┘    └─────────────┘
+│ Wake Word   │ →  │ Recording   │ →  │ Whisper     │ →  │ LLaMA 3.1   │
+│ "Hey Bob"   │    │ Blue LED    │    │ STT API     │    │ 8B Intent   │
+│ (Edge       │    │ 5s silence  │    │ (Groq)      │    │ Parser      │
+│ Impulse)    │    │ detection   │    │             │    │ (Groq)      │
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+                                                                │
+                                                                ▼
+┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
+│ Resume      │ ←  │ Voice       │ ←  │ Execute     │ ←  │ JSON        │
+│ Wake Word   │    │ Feedback    │    │ Actions     │    │ Response    │
+│ Detection   │    │ Speaker     │    │ AC/IR       │    │ {actions:[]}│
+└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
 ```
 
-**Current Flow (Implemented):**
-1. Wake word "Hey Bob" detected (Edge Impulse) ✅
-2. LED turns green → Listening mode starts ✅
-3. Record user's voice command (until silence detected or max ~10 sec) ✅
-4. LED turns blue → Processing starts ✅
-5. Send audio to console.groq.com → Get text ✅ (experimental)
-6. ❌ **STOP**: Intent parsing and execution not implemented
+### Flow
 
-**Next Steps (Not Implemented):**
-- Send text to LLM → Get structured JSON command
-- Execute command (AC control, IR signal, etc.)
-- Play TTS response through speaker
+1. **Wake Word**: "Hey Bob" detected → beep confirmation
+2. **Recording**: Blue LED on, record until 5s silence
+3. **Processing**: Send audio to Groq Whisper → get text
+4. **Intent Parsing**: Send text to LLaMA 3.1 8B → get JSON actions
+5. **Execute**: Run actions (AC control, IR signals)
+6. **Feedback**: Voice response ("Power on", "24 degrees", etc.)
+7. **Resume**: White LED flash → back to wake word listening
 
-**Speech-to-Text (Current Implementation):**
-- **console.groq.com**: Currently used for speech recognition (experimental)
-  - Free tier available
-  - High accuracy but requires internet connection
-  - Currently in testing phase
+### Configuration
 
-**LLM for Intent Parsing (Future Options):**
-- **Hugging Face Inference API**: Free tier, many models available
-  - `meta-llama/Meta-Llama-3-8B-Instruct`
-  - `mistralai/Mistral-7B-Instruct-v0.2`
-  - `google/gemma-7b-it`
+API credentials in `groq_config.h` (gitignored):
+```cpp
+#define GROQ_API_KEY "gsk_your_key_here"
+#define GROQ_WHISPER_MODEL "whisper-large-v3"
+#define GROQ_LLM_MODEL "llama-3.1-8b-instant"
+```
+
+See `guide/GROQ_LLM_SETUP.md` for detailed setup instructions.
+
+## Future Enhancements
+
+### Additional Voice Features
 - **Groq API**: Free tier, very fast inference (LLaMA 3 8B)
 - **Google Gemini API**: Free tier (15 RPM, 1M tokens/day)
 - **Cloudflare Workers AI**: Free tier (10K tokens/day)
