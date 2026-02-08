@@ -507,8 +507,8 @@ void startVoiceCommand() {
   // Stop wake word detection to avoid microphone conflicts
   stopEIWakeWord();
 
-  // LED green = listening
-  setLED(0, 255, 0);
+  // LED blue = listening
+  setLED(0, 0, 255);
 
   // Clear previous result
   memset(&lastResult, 0, sizeof(lastResult));
@@ -580,7 +580,7 @@ void updateVoiceCommand() {
       Serial.printf("[Voice] Processing %d samples (%.1f sec)\n",
                     recordedSamples, (float)recordedSamples / SAMPLE_RATE);
 
-      // Change to blue when starting API calls
+      // Keep blue while uploading to API
       setLED(0, 0, 255);  // Blue = uploading to API
 
       // Step 1: Transcribe audio
@@ -625,9 +625,15 @@ void updateVoiceCommand() {
       lastResult.success = true;
       lastResult.errorMessage = "";
 
-      // Success feedback
-      setLED(0, 255, 0);  // Green flash
-      delay(300);
+      // Clear the audio buffer to free memory
+      if (recordBuffer != nullptr) {
+        memset(recordBuffer, 0, MAX_RECORD_SAMPLES * sizeof(int16_t));
+      }
+      recordedSamples = 0;
+
+      // Success feedback - Red = response received
+      setLED(255, 255, 255);  // White flash
+      delay(500);
       setLED(0, 0, 0);    // LED off
 
       // Call callback if registered
@@ -644,6 +650,12 @@ void updateVoiceCommand() {
 
     case VOICE_ERROR: {
       Serial.println("[Voice] ERROR: " + lastResult.errorMessage);
+
+      // Clear the audio buffer to free memory
+      if (recordBuffer != nullptr) {
+        memset(recordBuffer, 0, MAX_RECORD_SAMPLES * sizeof(int16_t));
+      }
+      recordedSamples = 0;
 
       // Error feedback
       delay(500);
@@ -679,6 +691,12 @@ void cancelVoiceCommand() {
   if (currentState == VOICE_LISTENING) {
     stopRecording();
   }
+
+  // Clear the audio buffer to free memory
+  if (recordBuffer != nullptr) {
+    memset(recordBuffer, 0, MAX_RECORD_SAMPLES * sizeof(int16_t));
+  }
+  recordedSamples = 0;
 
   currentState = VOICE_IDLE;
   setLED(0, 0, 0);

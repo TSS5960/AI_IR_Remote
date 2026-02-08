@@ -34,10 +34,6 @@ ACState acState = {false, 24, MODE_COOL, FAN_AUTO, BRAND_GREE};
 // NeoPixel RGB LED
 Adafruit_NeoPixel pixels(NEOPIXEL_COUNT, NEOPIXEL_PIN, NEO_GRB + NEO_KHZ800);
 
-// Wake word LED control
-static unsigned long wakeWordLedOnTime = 0;
-static bool wakeWordLedActive = false;
-
 static bool ntpSynced = false;
 static unsigned long ntpStartMs = 0;
 
@@ -174,24 +170,16 @@ static void printHeartbeat() {
 
 /**
  * Callback function when "Hey Bob" is detected by Edge Impulse
- * Lights up the NeoPixel RGB LED for 3 seconds
+ * Starts voice command recording - LED is controlled by voice_command module
  * @param confidence The confidence score (0.0 - 1.0)
  */
 void onWakeWordDetected(float confidence) {
   Serial.printf("\n*** WAKE WORD DETECTED: Hey Bob! (%.0f%% confidence) ***\n", confidence * 100);
 
-  // Turn on NeoPixel RGB LED to white (255, 255, 255)
-  pixels.setPixelColor(0, pixels.Color(255, 255, 255));
-  pixels.show();
-
-  // Mark LED as active
-  wakeWordLedActive = true;
-  wakeWordLedOnTime = millis();
-
   // Play a confirmation beep
   playActionTone();
 
-  // Start voice command mode
+  // Start voice command mode (LED controlled by voice_command module)
   startVoiceCommand();
 }
 
@@ -312,16 +300,8 @@ void loop() {
   // Update Edge Impulse wake word detection (throttled to not block network)
   updateEIWakeWord();
 
-  // Update voice command module
+  // Update voice command module (handles LED control)
   updateVoiceCommand();
-  
-  // Handle wake word LED timer (turn off after 3 seconds)
-  if (wakeWordLedActive && (millis() - wakeWordLedOnTime >= 3000)) {
-    pixels.clear();
-    pixels.show();
-    wakeWordLedActive = false;
-    Serial.println("[WakeWord] RGB LED OFF");
-  }
 
   // Periodic status log
   static unsigned long lastHeartbeatMs = 0;
