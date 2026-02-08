@@ -1,6 +1,6 @@
 #include "ir_control.h"
 
-// Initialize IR receiver with larger buffer for complex protocols (AC remotes can be very long)
+// Initialize IR receiver with larger buffer for complex protocols (AC remotes can be very long, It can't be learnt)
 const uint16_t kCaptureBufferSize = 1024;  // Increased from default ~300
 const uint8_t kTimeout = 50;  // Timeout in milliseconds (50ms default)
 const uint16_t kFrequency = 38000;  // 38kHz modulation frequency
@@ -35,9 +35,8 @@ void initIR() {
   fujitsuAC.begin();
   hitachiAC.begin();
   
-  Serial.printf("红外发射器初始化完成 (GPIO%d)\n", IR_TX_PIN);
-  Serial.printf("红外接收器初始化完成 (GPIO%d)\n", IR_RX_PIN);
-  Serial.println("支持10个空调品牌");
+  Serial.printf("IR Transmitter Initialization complete (GPIO%d)\n", IR_TX_PIN);
+  Serial.printf("IR Receiver Initialization complete (GPIO%d)\n", IR_RX_PIN);
 }
 
 uint8_t convertMode(ACMode mode) {
@@ -62,10 +61,10 @@ uint8_t convertFanSpeed(FanSpeed speed) {
 }
 
 void sendACState(const ACState& state) {
-  Serial.println("\n[IR] 发送空调状态...");
-  Serial.printf("     品牌: %s\n", getBrandName(state.brand));
-  Serial.printf("     电源: %s\n", state.power ? "开" : "关");
-  Serial.printf("     温度: %dC\n", state.temperature);
+  Serial.println("\n[IR] Sending AC state...");
+  Serial.printf("     Brand: %s\n", getBrandName(state.brand));
+  Serial.printf("     Power: %s\n", state.power ? "ON" : "OFF");
+  Serial.printf("     Temp: %dC\n", state.temperature);
   
   switch(state.brand) {
     case BRAND_DAIKIN:
@@ -74,7 +73,7 @@ void sendACState(const ACState& state) {
       daikinAC.setMode(convertMode(state.mode));
       daikinAC.setFan(convertFanSpeed(state.fanSpeed));
       daikinAC.send();
-      Serial.println("     -> Daikin信号已发送");
+      Serial.println("     -> Daikin signal sent");
       break;
       
     case BRAND_MITSUBISHI:
@@ -83,7 +82,7 @@ void sendACState(const ACState& state) {
       mitsubishiAC.setMode(convertMode(state.mode));
       mitsubishiAC.setFan(convertFanSpeed(state.fanSpeed));
       mitsubishiAC.send();
-      Serial.println("     -> Mitsubishi信号已发送");
+      Serial.println("     -> Mitsubishi signal sent");
       break;
       
     case BRAND_PANASONIC:
@@ -92,7 +91,7 @@ void sendACState(const ACState& state) {
       panasonicAC.setMode(convertMode(state.mode));
       panasonicAC.setFan(convertFanSpeed(state.fanSpeed));
       panasonicAC.send();
-      Serial.println("     -> Panasonic信号已发送");
+      Serial.println("     -> Panasonic signal sent");
       break;
       
     case BRAND_GREE:
@@ -101,7 +100,7 @@ void sendACState(const ACState& state) {
       greeAC.setMode(convertMode(state.mode));
       greeAC.setFan(convertFanSpeed(state.fanSpeed));
       greeAC.send();
-      Serial.println("     -> Gree信号已发送");
+      Serial.println("     -> Gree signal sent");
       break;
       
     case BRAND_MIDEA:
@@ -110,7 +109,7 @@ void sendACState(const ACState& state) {
       mideaAC.setMode(convertMode(state.mode));
       mideaAC.setFan(convertFanSpeed(state.fanSpeed));
       mideaAC.send();
-      Serial.println("     -> Midea信号已发送");
+      Serial.println("     -> Midea signal sent");
       break;
       
     case BRAND_HAIER:
@@ -119,7 +118,7 @@ void sendACState(const ACState& state) {
       haierAC.setMode(convertMode(state.mode));
       haierAC.setFan(convertFanSpeed(state.fanSpeed));
       haierAC.send();
-      Serial.println("     -> Haier信号已发送");
+      Serial.println("     -> Haier signal sent");
       break;
       
     case BRAND_SAMSUNG:
@@ -128,7 +127,7 @@ void sendACState(const ACState& state) {
       samsungAC.setMode(convertMode(state.mode));
       samsungAC.setFan(convertFanSpeed(state.fanSpeed));
       samsungAC.send();
-      Serial.println("     -> Samsung信号已发送");
+      Serial.println("     -> Samsung signal sent");
       break;
       
     case BRAND_LG:
@@ -137,7 +136,7 @@ void sendACState(const ACState& state) {
       lgAC.setMode(convertMode(state.mode));
       lgAC.setFan(convertFanSpeed(state.fanSpeed));
       lgAC.send();
-      Serial.println("     -> LG信号已发送");
+      Serial.println("     -> LG signal sent");
       break;
       
     case BRAND_FUJITSU:
@@ -146,7 +145,7 @@ void sendACState(const ACState& state) {
       fujitsuAC.setMode(convertMode(state.mode));
       fujitsuAC.setFanSpeed(convertFanSpeed(state.fanSpeed));
       fujitsuAC.send();
-      Serial.println("     -> Fujitsu信号已发送");
+      Serial.println("     -> Fujitsu signal sent");
       break;
       
     case BRAND_HITACHI:
@@ -155,11 +154,11 @@ void sendACState(const ACState& state) {
       hitachiAC.setMode(convertMode(state.mode));
       hitachiAC.setFan(convertFanSpeed(state.fanSpeed));
       hitachiAC.send();
-      Serial.println("     -> Hitachi信号已发送");
+      Serial.println("     -> Hitachi signal sent");
       break;
       
     default:
-      Serial.println("     WARN: 未知品牌，使用Daikin默认");
+      Serial.println("     WARN: Unknown brand, using Daikin default");
       daikinAC.setPower(state.power);
       daikinAC.setTemp(state.temperature);
       daikinAC.send();
