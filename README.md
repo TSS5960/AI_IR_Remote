@@ -1,34 +1,33 @@
-# ESP32-S3 Smart AC Remote Control with Voice Integration(Not Up to data more function was added)
+# ESP32-S3 Smart AC Remote Control with Voice Integration
 
-An intelligent air conditioner remote control system based on ESP32-S3 with voice recording, IR learning, cloud connectivity, and multi-sensor integration.
+An intelligent air conditioner remote control system based on ESP32-S3 with voice wake word detection (Edge Impulse), IR learning, cloud connectivity, and multi-sensor integration.
 
-## 🌟 Features
+## Features
 
 ### Core Functionality
 - **WiFi Captive Portal**: Easy WiFi setup via web interface (no hardcoded credentials)
-- **IR Control**: Send IR commands to control air conditioners
-- **IR Learning**: Capture and replay any IR remote signals
-- **Voice Recording**: Record audio and play back through speaker
-- **Experimental Wake Word**: Basic audio pattern matching (currently unreliable)
-- **Multi-Screen Display**: OLED interface with 6 different screens
+- **IR Control**: Send IR commands to control air conditioners (10+ brands supported)
+- **IR Learning**: Capture and replay any IR remote signals (up to 40 signals)
+- **Voice Wake Word**: "Hey Bob" wake word detection using Edge Impulse ML
+- **Multi-Screen Display**: TFT interface with 7 different screens
 - **Environmental Monitoring**: Temperature, humidity, light, and motion sensors
 - **Cloud Integration**: MQTT broker and Firebase real-time database
 - **Web Dashboard**: Cloudflare-hosted control panel
 - **Alarm System**: Time-based alarms with speaker notifications
 
 ### Voice Features
+- **Edge Impulse Wake Word**: On-device ML model for "Hey Bob" detection
+  - Runs entirely on ESP32 (no cloud required)
+  - ~100ms inference latency
+  - Adjustable confidence threshold (default 80%)
 - **Record & Playback**: 3-second audio recording with instant playback
 - **Voice Level Monitor**: Real-time audio RMS visualization
-- **Experimental Wake Word**: Prototype audio pattern matching (not production-ready)
-  - Simple waveform correlation approach with significant limitations
-  - Highly sensitive to volume, distance, speed, and background noise
-  - Requires exact match of training conditions
-- **LED Feedback**: NeoPixel RGB LED indicates voice activity
+- **LED Feedback**: NeoPixel RGB LED indicates wake word detection
 
-## 🔧 Hardware Components
+## Hardware Components
 
 ### Main Controller
-- **ESP32-S3 Dev Module** - Dual-core microcontroller with WiFi
+- **ESP32-S3-N16R8** - Dual-core 240MHz with 16MB Flash, 8MB PSRAM
 
 ### Audio System
 - **INMP441 I2S MEMS Microphone** (GPIO4=WS, GPIO5=SCK, GPIO6=SD)
@@ -36,11 +35,11 @@ An intelligent air conditioner remote control system based on ESP32-S3 with voic
 - **Adafruit NeoPixel RGB LED** (GPIO48)
 
 ### Display & Input
-- **OLED Display SSD1306** (128x64, I2C on GPIO13/14)
+- **ST7789 TFT Display** (240x280, SPI)
 - **Analog Joystick** (X/Y axes + button)
 
 ### Sensors
-- **GY-30 Light Sensor** (I2C)
+- **BH1750 Light Sensor** (I2C)
 - **DHT11 Temperature & Humidity Sensor**
 - **PIR Motion Sensor**
 
@@ -48,7 +47,7 @@ An intelligent air conditioner remote control system based on ESP32-S3 with voic
 - **IR Transmitter LED** (GPIO12)
 - **IR Receiver Module** (GPIO11)
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 AC_IR_Remote/
@@ -58,18 +57,34 @@ AC_IR_Remote/
 ├── secrets.h.template         # Template for secrets configuration
 ├── firebase_config.h          # Firebase paths (not in git)
 ├── firebase_config.h.template # Template for Firebase configuration
+│
+├── # Core modules
 ├── ac_control.cpp/h           # AC IR control logic
 ├── ir_control.cpp/h           # IR transmitter/receiver
-├── ir_learning.cpp/h          # IR learning mode
-├── mic_control.cpp/h          # Microphone and voice processing
+├── ir_learning_enhanced.cpp/h # Enhanced IR learning mode
+├── mic_control.cpp/h          # Microphone I2S driver
 ├── speaker_control.cpp/h      # Audio playback
 ├── button_control.cpp/h       # Joystick input handling
-├── display.cpp/h              # OLED screen management
+├── display.cpp/h              # TFT screen management
 ├── sensors.cpp/h              # Environmental sensors
 ├── alarm_manager.cpp/h        # Alarm system
+│
+├── # Edge Impulse Wake Word
+├── ei_wake_word.cpp/h         # Edge Impulse integration
+│
+├── # Network modules
 ├── wifi_manager.cpp/h         # WiFi connectivity
 ├── mqtt_broker.cpp/h          # MQTT client
 ├── firebase_client.cpp/h      # Firebase integration
+│
+├── # Training Tools
+├── EiWakeWordTraining/        # Audio sample collection tools
+│   ├── audio_capture.ino      # ESP32 sketch for recording samples
+│   └── capture_samples.py     # Python script to save WAV files
+│
+├── guide/                     # Documentation (gitignored)
+│   └── EDGE_IMPULSE_GUIDE.md  # Complete Edge Impulse setup guide
+│
 └── cloudflare_dashboard/      # Web dashboard
     ├── src/index.js           # Cloudflare Worker
     ├── public/
@@ -80,50 +95,9 @@ AC_IR_Remote/
     └── wrangler.toml.template # Template for Cloudflare configuration
 ```
 
-## 🚀 Getting Started
+## Getting Started
 
-### 1. Service Setup
-
-#### Firebase Realtime Database
-1. Go to [Firebase Console](https://console.firebase.google.com/)
-2. Create a new project or select existing one
-3. Navigate to **Realtime Database** → Create Database
-4. Choose **Start in test mode** (for development)
-5. Get your database URL (e.g., `your-project.firebaseio.com`)
-6. Get authentication token:
-   - Go to **Project Settings** → **Service Accounts**
-   - Click **Database secrets** → Show/Add secret
-   - Copy the secret token
-
-#### MQTT Broker
-The project uses a public MQTT broker by default:
-- **Broker**: `broker.emqx.io`
-- **Port**: 1883 (non-SSL) or 8883 (SSL)
-- **Topics**:
-  - Publish: `ac/status`
-  - Subscribe: `ac/command`
-
-**Alternative MQTT Brokers:**
-- [HiveMQ Cloud](https://www.hivemq.com/mqtt-cloud-broker/) - Free tier available
-- [CloudMQTT](https://www.cloudmqtt.com/) - Managed MQTT hosting
-- Self-hosted: Mosquitto on Raspberry Pi/VPS
-
-#### Cloudflare Workers (Optional)
-1. Sign up at [Cloudflare](https://dash.cloudflare.com/)
-2. Install Wrangler CLI: `npm install -g wrangler`
-3. Login: `wrangler login`
-4. Copy configuration template:
-   ```bash
-   cd cloudflare_dashboard
-   cp wrangler.toml.template wrangler.toml
-   ```
-5. Edit `wrangler.toml` and update `FIREBASE_DB_URL` with your Firebase database URL
-6. Configure secrets in Cloudflare dashboard or via CLI:
-   ```bash
-   wrangler secret put FIREBASE_AUTH
-   ```
-
-### 2. Hardware Setup
+### 1. Hardware Setup
 
 **Audio Connections:**
 ```
@@ -148,49 +122,20 @@ NeoPixel → ESP32-S3
   DIN → GPIO48
 ```
 
-**Sensors (I2C Bus):**
-```
-OLED + GY-30 → ESP32-S3
-  VCC → 3.3V
-  GND → GND
-  SDA → GPIO13
-  SCL → GPIO14
-```
-
-### 3. Software Setup
+### 2. Software Setup
 
 #### Arduino IDE Configuration
 1. Install ESP32 board support: https://espressif.github.io/arduino-esp32/
 2. Select Board: **ESP32S3 Dev Module**
 3. Install required libraries:
    - `Adafruit_NeoPixel`
-   - `Adafruit_GFX` + `Adafruit_SSD1306`
-   - `IRremote` or `IRremoteESP8266`
+   - `TFT_eSPI`
+   - `IRremoteESP8266`
    - `DHT sensor library`
-   - `BH1750` (for GY-30)
-   - `Firebase ESP32` (optional, if using Firebase)
-   - `PubSubClient` (optional, if using MQTT)
-
-#### Configure Firebase (Optional)
-If you want to use Firebase features, you'll need to create your own configuration files:
-
-1. Copy templates and create your configuration files:
-```bash
-cp firebase_config.h.template firebase_config.h
-cp secrets.h.template secrets.h
-```
-
-2. Edit `firebase_config.h` with your database URL:
-```cpp
-#define FIREBASE_DB_URL "https://your-project-id-default-rtdb.firebaseio.com"
-```
-
-3. Edit `secrets.h` with your Firebase authentication token:
-```cpp
-#define FIREBASE_AUTH "your-database-secret"  // From Firebase setup step
-```
-
-**Note:** These files are in `.gitignore` and will not be committed to the repository.
+   - `BH1750`
+   - `Firebase ESP32 Client`
+   - `PubSubClient`
+   - **Edge Impulse library** (see Wake Word Setup below)
 
 #### Upload Firmware
 1. Connect ESP32-S3 via USB
@@ -198,73 +143,119 @@ cp secrets.h.template secrets.h
 3. Upload `AC_IR_Remote.ino`
 4. Open Serial Monitor at **115200 baud**
 
-#### WiFi Setup (Captive Portal)
-The device creates its own WiFi access point for initial setup:
+### 3. Wake Word Setup (Edge Impulse)
 
-1. **First boot** - ESP32 creates WiFi AP: `ESP32_AC_Remote` (or similar)
+The wake word detection uses Edge Impulse for on-device machine learning. Follow these steps to train your own "Hey Bob" model:
+
+#### Step 1: Collect Training Samples
+
+Use the tools in `EiWakeWordTraining/` folder:
+
+1. **Upload the capture sketch:**
+   ```
+   Open EiWakeWordTraining/audio_capture.ino in Arduino IDE
+   Upload to ESP32
+   Close Serial Monitor after upload
+   ```
+
+2. **Install Python dependencies:**
+   ```bash
+   pip install pyserial
+   ```
+
+3. **Run the capture script:**
+   ```bash
+   cd EiWakeWordTraining
+   python capture_samples.py
+   ```
+
+4. **Record samples interactively:**
+   ```
+   Commands:
+     1 or h  - Record 'hey_bob' sample (say "Hey Bob")
+     2 or n  - Record 'noise' sample (background sounds)
+     3 or u  - Record 'unknown' sample (other words)
+     t       - Test microphone level
+     s       - Show sample counts
+     q       - Quit
+   ```
+
+5. **Recommended sample counts:**
+   - `hey_bob`: 50-100 samples (vary your voice, distance, speed)
+   - `noise`: 200+ samples (silence, fan noise, TV, typing)
+   - `unknown`: 30-50 samples ("Hello", "Hey John", "OK Google", etc.)
+
+6. **Samples are saved to:** `EiWakeWordTraining/training_samples/`
+
+**Important:** Close Arduino IDE Serial Monitor before running Python script - only one program can use the COM port.
+
+#### Step 2: Train on Edge Impulse
+
+1. Create account at [edgeimpulse.com](https://edgeimpulse.com)
+2. Create new project: "Hey Bob Wake Word"
+3. Upload WAV files from `training_samples/` folders with correct labels
+4. Create Impulse:
+   - Window size: 1500ms, Stride: 500ms, Frequency: 16000Hz
+   - Processing: Audio (MFCC)
+   - Learning: Classification or Transfer Learning
+5. Train model (target >90% accuracy)
+6. Deploy as Arduino library (Quantized int8)
+7. Download the `.zip` file
+
+#### Step 3: Install Library
+
+1. In Arduino IDE: **Sketch** → **Include Library** → **Add .ZIP Library**
+2. Select the downloaded Edge Impulse library
+3. Re-upload `AC_IR_Remote.ino`
+
+The wake word detection will automatically start on boot.
+
+### 4. WiFi Setup (Captive Portal)
+
+1. **First boot** - ESP32 creates WiFi AP: `ESP32_AC_Remote`
 2. **Connect to AP** - WiFi password: `12345678`
-3. **Configure WiFi** - Browser should auto-open configuration page
+3. **Configure WiFi** - Browser auto-opens configuration page
    - If not, navigate to `http://192.168.4.1`
    - Enter your WiFi SSID and password
-   - Click Save
 4. **Device reboots** and connects to your WiFi network
 
-**Reset WiFi Credentials:**
-- Use the joystick to access WiFi reset function
-- Device will restart in AP mode for reconfiguration
+### 5. Firebase Setup (Optional)
 
-### 4. Web Dashboard (Optional)
+1. Copy templates:
+   ```bash
+   cp firebase_config.h.template firebase_config.h
+   cp secrets.h.template secrets.h
+   ```
 
-#### Local Development
-```bash
-cd cloudflare_dashboard
-npm install
-npx wrangler dev
-```
+2. Edit with your Firebase credentials
 
-#### Deploy to Cloudflare
-```bash
-npx wrangler deploy
-```
-
-#### Environment Variables
-Configure secrets via CLI:
-- `FIREBASE_AUTH` - Firebase authentication token
-
-Set with: `wrangler secret put FIREBASE_AUTH`
-
-## 🎮 Usage
+## Usage
 
 ### Serial Commands
 
-**Voice Commands:**
+**Wake Word (Edge Impulse):**
 - `voice` - Show real-time voice level monitor
 - `repeat` - Record 3 seconds and play back
-- `train` - Record audio pattern (experimental, unreliable)
-- `wake_start` - Start pattern detection (experimental)
-- `wake_stop` - Stop pattern detection
+- `wake_start` - Start wake word detection
+- `wake_stop` - Stop wake word detection
+- `wake_threshold` - Show current confidence threshold
+- `wake_threshold N` - Set threshold (0-100%)
 
 **IR Commands:**
 - `learn` - Enter IR learning mode
-- `send DEVICE` - Send learned IR command
-- `list` - List all learned IR commands
+- `I1` to `I40` - Send learned IR signal 1-40
+- `irtest` - Test IR receiver
 
 **AC Control:**
-- `on` / `off` - Turn AC on/off
+- `1` / `0` - Turn AC on/off
 - `+` / `-` - Increase/decrease temperature
-- `m [mode]` - Change mode (cool/heat/dry/fan/auto)
-- `f [speed]` - Set fan speed (low/med/high/auto)
+- `m` - Cycle through modes (cool/heat/dry/fan/auto)
+- `f` - Cycle through fan speeds
 
 **System Commands:**
 - `h` - Show help
-- `s` - Switch screen manually
+- `s` - Show system status
 - `test` - Test speaker
-- `wifi` - Show WiFi status
-- `mqtt` - Show MQTT status
-
-**WiFi Management:**
-- Use joystick to access WiFi reset menu
-- Resets credentials and restarts in AP mode for reconfiguration
 
 **Alarm Management:**
 - `a HH MM [name]` - Add alarm (e.g., `a 07 30 Morning`)
@@ -277,92 +268,68 @@ Set with: `wrangler secret put FIREBASE_AUTH`
 Navigate using joystick (left/right):
 1. **Volume** - Speaker volume control
 2. **Clock** - Current time display
-3. **Network** - WiFi and MQTT status
+3. **Network** - WiFi and Firebase status
 4. **AC Control** - Temperature and mode
 5. **IR Learn** - IR learning interface
 6. **Sensors** - Environmental data
+7. **Alarm** - Active alarm display
 
-### Experimental Voice Pattern Detection
+### Wake Word Detection
 
-**⚠️ Note**: This feature is experimental and has reliability issues. Consider it a learning/prototype feature.
+When "Hey Bob" is detected:
+1. Serial prints detection with confidence percentage
+2. NeoPixel LED turns white for 3 seconds
+3. Confirmation beep plays
 
-1. Train the system:
-```
-> train
-Recording will start immediately...
-[Say your phrase clearly]
-Training complete!
-```
+**Tuning Tips:**
+- Default threshold is 80% - increase if too many false positives
+- Use `wake_threshold 90` for stricter detection
+- Use `wake_threshold 70` if it's not detecting well
+- Retrain model with more samples if accuracy is poor
 
-2. Start detection:
-```
-> wake_start
-Detection started (may have false positives/negatives)
-```
+## Technical Details
 
-3. If detected correctly - LED lights up white for 3 seconds + beep
-
-**Known Issues:**
-- High false positive/negative rate
-- Requires identical volume and distance from training
-- Background noise causes failures
-- No tolerance for speed or pitch variations
-
-## 🔬 Technical Details
-
-### Voice Pattern Detection (Experimental)
-- **Method**: Simple waveform correlation (not suitable for production)
-- **Training**: Records 1.5 seconds (24,000 samples at 16kHz)
-- **Detection**: Rolling buffer with Pearson correlation coefficient
-- **Threshold**: 65% similarity (often too strict or too loose)
+### Edge Impulse Wake Word
+- **Model**: MFCC + Neural Network (Classification)
 - **Sample Rate**: 16kHz mono
-- **Latency**: ~100ms detection interval
-- **Limitations**: 
-  - No MFCC or proper feature extraction
-  - No noise filtering or normalization
-  - No time warping tolerance (DTW)
-  - Highly sensitive to environmental conditions
-  - **Not recommended for actual use** - consider it a learning demonstration
+- **Window Size**: 1500ms
+- **Inference**: ~100ms on ESP32-S3
+- **Threshold**: 80% confidence (adjustable)
+- **Cooldown**: 2 seconds between detections
 
 ### MQTT Topics
 - **Publish**: `ac/status` - Device status updates
 - **Subscribe**: `ac/command` - Remote commands
 
 ### Memory Usage
-- **Wake Word Pattern**: ~48KB (24,000 samples × 2 bytes)
-- **Audio Buffer**: ~48KB (rolling buffer)
-- **Total Audio Memory**: ~96KB
+- Edge Impulse model: ~50-100KB (quantized int8)
+- Audio inference buffer: ~48KB
 
-## 🐛 Troubleshooting
+## Troubleshooting
+
+### Wake Word Not Detecting
+- Check microphone connections (WS=4, SCK=5, SD=6)
+- Use `voice` command to verify audio levels
+- Lower threshold: `wake_threshold 70`
+- Retrain model with more samples from your environment
+
+### Too Many False Positives
+- Increase threshold: `wake_threshold 90`
+- Add more "noise" samples to training data
+- Add more "unknown" speech samples
 
 ### Microphone Issues
-- Check GPIO connections (WS=4, SCK=5, SD=6)
-- Ensure L/R pin connected to GND
+- Ensure L/R pin connected to GND (left channel)
 - Verify 3.3V power supply
-- Use `voice` command to test levels
-
-### Speaker Problems
-- Confirm I2S_NUM_1 not conflicting
-- Check 5V power for MAX98357
-- Test with `test` command
-
-### Wake Word Not Working Properly
-- **Expected behavior**: This feature is experimental and unreliable
-- Try retraining with `train` command
-- Must speak at EXACT same volume/distance as training
-- Adjust correlation threshold in code (currently 0.65, may need tuning)
-- **Recommended**: Use physical button or better voice recognition service instead
+- Check for I2S conflicts with speaker
 
 ### WiFi Connection Failed
-- Reset WiFi using joystick and reconfigure via captive portal
-- Ensure 2.4GHz WiFi network (ESP32 doesn't support 5GHz)
-- Check that WiFi password was entered correctly during setup
-- Connect to ESP32 AP (`12345678`) and reconfigure if needed
-- Monitor serial output for error messages
+- Reset WiFi using joystick double-click on Network screen
+- Ensure 2.4GHz WiFi (ESP32 doesn't support 5GHz)
+- Connect to AP (`12345678`) and reconfigure
 
-## 📝 Configuration
+## Pin Configuration (config.h)
 
-### Pin Assignments (config.h)
 ```cpp
 // Microphone (INMP441)
 #define MIC_WS_PIN 4
@@ -377,53 +344,19 @@ Detection started (may have false positives/negatives)
 // NeoPixel LED
 #define NEOPIXEL_PIN 48
 
-// Display (I2C)
-#define DISPLAY_SDA_PIN 13
-#define DISPLAY_SCL_PIN 14
-
 // IR
-#define IR_SEND_PIN 12
-#define IR_RECV_PIN 11
+#define IR_TX_PIN 12
+#define IR_RX_PIN 11
 ```
 
-### Audio Settings
-```cpp
-#define MIC_SAMPLE_RATE 16000
-#define SPEAKER_SAMPLE_RATE 44100
-#define WAKE_WORD_SAMPLES 24000  // 1.5 seconds
-#define CORRELATION_THRESHOLD 0.65
-```
-
-## 🔮 Future Enhancements
-
-**Voice Recognition Improvements (High Priority):**
-- [ ] Replace simple correlation with MFCC + DTW algorithm
-- [ ] Add proper noise filtering and audio normalization
-- [ ] Implement TensorFlow Lite for on-device wake word (Edge Impulse)
-- [ ] Or use cloud-based wake word service
-
-**Voice Assistant Features:**
-- [ ] Cloud-based Speech-to-Text integration (Wit.ai, Google Speech API)
-- [ ] LLM integration for voice commands (OpenAI, Gemini)
-- [ ] Text-to-Speech responses (gTTS, Eleven Labs)
-
-**Smart Home Integration:**
-- [ ] Smart plug control (Home Assistant/IFTTT)
-- [ ] Multi-device control
-- [ ] Voice activity detection improvements
-
-## 📄 License
+## License
 
 This project is open source and available for educational purposes.
 
-## 🤝 Contributing
-
-Contributions are welcome! Please feel free to submit issues or pull requests.
-
-## 👨‍💻 Author
+## Author
 
 Sheng
 
 ---
 
-**Note**: This is a hobby/learning project. The wake word detection feature is a **prototype demonstration only** and is not reliable for real-world use. For production voice control, use professional services like Google Assistant SDK, Alexa Voice Service, or TensorFlow Lite models trained with proper datasets.
+**Note**: This project uses Edge Impulse for on-device wake word detection. The ML model runs entirely on the ESP32 without requiring cloud connectivity for voice detection.
