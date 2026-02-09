@@ -598,4 +598,4 @@ Sheng
 
 ---
 
-**Note**: This project uses Edge Impulse for on-device wake word detection. The ML model runs entirely on the ESP32 without requiring cloud connectivity for voice detection.
+**Note**: This project uses Edge Impulse for on-device wake word detection. The ML model runs entirely on the ESP32 without requiring cloud connectivity for voice detection, however the rest part of the project needs wifi to be working.
