@@ -30,9 +30,11 @@ enum VoiceCommandState {
 // ==============================================================================
 
 struct VoiceAction {
-  String type;          // Action type: ac_on, ac_off, ac_temp, etc.
-  int value;            // Optional value (temperature, IR signal number, etc.)
-  bool hasValue;        // Whether value is set
+  String type;          // Action type: ac_on, ac_off, ac_temp, light_on, etc.
+  int value;            // Optional numeric value (temperature, IR signal number, etc.)
+  String stringValue;   // Optional string value (brand name, signal name, etc.)
+  bool hasValue;        // Whether numeric value is set
+  bool hasStringValue;  // Whether string value is set
 };
 
 // ==============================================================================

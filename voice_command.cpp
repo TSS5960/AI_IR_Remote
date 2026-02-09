@@ -17,6 +17,7 @@
 // External declarations for global variables and functions from main sketch
 extern ACState acState;
 extern void sendACState(const ACState& state);
+extern const char* getBrandName(ACBrand brand);
 
 // External wake word functions
 extern void stopEIWakeWord();
@@ -51,22 +52,102 @@ static unsigned long silenceStartTime = 0;
 // System Prompt for LLM
 // ==============================================================================
 
-static const char* LLM_SYSTEM_PROMPT = R"(You are a smart home assistant. Parse user commands and return JSON.
+// Base system prompt - dynamic context will be appended
+static const char* LLM_SYSTEM_PROMPT_BASE = R"(You are a smart home assistant. Parse user commands and return JSON.
 
 Available actions:
-- ac_on: Turn on air conditioner
+- ac_on: Turn on air conditioner (uses current AC brand)
 - ac_off: Turn off air conditioner
 - ac_temp: Set temperature (value: 16-30)
 - ac_mode: Set mode (value: cool, heat, dry, fan, auto)
-- ir_send: Send learned IR signal (value: 1-40)
+- ac_brand: Switch to different AC brand before sending (value: daikin, mitsubishi, panasonic, gree, midea, haier, samsung, lg, fujitsu, hitachi)
+- ir_send: Send IR signal by slot number (value: 1-40)
 
 Respond with ONLY valid JSON in this format:
 {"actions": [{"type": "action_name", "value": optional_value}]}
 
+IMPORTANT: For IR devices (lights, fans, TV, etc.), use "ir_send" with the signal number from the registered signals list below.
+When user mentions a specific AC brand, use ac_brand first to switch, then send the command.
+If user just says "air conditioner" without brand, use the current AC brand.
+
 Examples:
 - "turn on the AC" -> {"actions": [{"type": "ac_on"}]}
 - "set to 22 degrees" -> {"actions": [{"type": "ac_temp", "value": 22}]}
+- "turn on the Daikin AC" -> {"actions": [{"type": "ac_brand", "value": "daikin"}, {"type": "ac_on"}]}
 - "it's hot" -> {"actions": [{"type": "ac_on"}, {"type": "ac_mode", "value": "cool"}]})";
+
+// Dynamic prompt storage
+static String dynamicSystemPrompt;
+
+/**
+ * Build dynamic system prompt with registered IR signals and current AC state
+ */
+static void buildDynamicPrompt() {
+  dynamicSystemPrompt = LLM_SYSTEM_PROMPT_BASE;
+
+  // Add current AC brand info
+  dynamicSystemPrompt += "\n\n--- CURRENT STATE ---\n";
+  dynamicSystemPrompt += "Current AC brand: ";
+  dynamicSystemPrompt += getBrandName(acState.brand);
+  dynamicSystemPrompt += " (this will be used if user says 'air conditioner' without specifying brand)\n";
+
+  // Add registered IR signals
+  dynamicSystemPrompt += "\n--- REGISTERED IR SIGNALS ---\n";
+  dynamicSystemPrompt += "Use ir_send with these signal numbers:\n";
+
+  int registeredCount = 0;
+  for (int i = 0; i < TOTAL_SIGNALS; i++) {
+    if (isSignalLearned(i)) {
+      const char* signalName = getSignalName(i);
+      if (signalName != nullptr && strlen(signalName) > 0) {
+        dynamicSystemPrompt += "- Signal ";
+        dynamicSystemPrompt += String(i + 1);  // Display as 1-40
+        dynamicSystemPrompt += ": \"";
+        dynamicSystemPrompt += signalName;
+        dynamicSystemPrompt += "\"\n";
+        registeredCount++;
+      }
+    }
+  }
+
+  if (registeredCount == 0) {
+    dynamicSystemPrompt += "(No IR signals registered yet)\n";
+  }
+
+  // Add examples based on registered signals
+  dynamicSystemPrompt += "\nExamples based on registered signals:\n";
+
+  // Find common signal types and add examples
+  for (int i = 0; i < TOTAL_SIGNALS; i++) {
+    if (isSignalLearned(i)) {
+      const char* name = getSignalName(i);
+      if (name != nullptr) {
+        String nameUpper = String(name);
+        nameUpper.toUpperCase();
+
+        if (nameUpper.indexOf("LIGHT") >= 0 && nameUpper.indexOf("ON") >= 0 && nameUpper.indexOf("OFF") < 0) {
+          dynamicSystemPrompt += "- \"turn on the light\" -> {\"actions\": [{\"type\": \"ir_send\", \"value\": ";
+          dynamicSystemPrompt += String(i + 1);
+          dynamicSystemPrompt += "}]}\n";
+        } else if (nameUpper.indexOf("LIGHT") >= 0 && nameUpper.indexOf("OFF") >= 0) {
+          dynamicSystemPrompt += "- \"turn off the light\" -> {\"actions\": [{\"type\": \"ir_send\", \"value\": ";
+          dynamicSystemPrompt += String(i + 1);
+          dynamicSystemPrompt += "}]}\n";
+        } else if (nameUpper.indexOf("TV") >= 0 && nameUpper.indexOf("POWER") >= 0) {
+          dynamicSystemPrompt += "- \"turn on TV\" -> {\"actions\": [{\"type\": \"ir_send\", \"value\": ";
+          dynamicSystemPrompt += String(i + 1);
+          dynamicSystemPrompt += "}]}\n";
+        } else if (nameUpper.indexOf("FAN") >= 0) {
+          dynamicSystemPrompt += "- \"turn on fan\" -> {\"actions\": [{\"type\": \"ir_send\", \"value\": ";
+          dynamicSystemPrompt += String(i + 1);
+          dynamicSystemPrompt += "}]}\n";
+        }
+      }
+    }
+  }
+
+  Serial.printf("[Voice] Dynamic prompt built with %d registered IR signals\n", registeredCount);
+}
 
 // ==============================================================================
 // Helper Functions
@@ -132,6 +213,55 @@ static int32_t calculateRMS(int16_t* samples, size_t count) {
     sum += val * val;
   }
   return sqrt(sum / count);
+}
+
+/**
+ * Find IR signal index by name pattern (case-insensitive partial match)
+ * @param pattern The name pattern to search for (e.g., "LightOn", "LightOff")
+ * @return Signal index (0-39) if found, -1 if not found
+ */
+static int findIRSignalByName(const char* pattern) {
+  for (int i = 0; i < TOTAL_SIGNALS; i++) {
+    if (isSignalLearned(i)) {
+      const char* signalName = getSignalName(i);
+      if (signalName != nullptr && strlen(signalName) > 0) {
+        // Case-insensitive comparison
+        String nameUpper = String(signalName);
+        String patternUpper = String(pattern);
+        nameUpper.toUpperCase();
+        patternUpper.toUpperCase();
+
+        if (nameUpper.indexOf(patternUpper) >= 0) {
+          Serial.printf("[Voice] Found IR signal '%s' at index %d for pattern '%s'\n",
+                        signalName, i, pattern);
+          return i;
+        }
+      }
+    }
+  }
+  Serial.printf("[Voice] No IR signal found for pattern '%s'\n", pattern);
+  return -1;
+}
+
+/**
+ * Convert brand name string to ACBrand enum
+ */
+static ACBrand brandNameToEnum(const String& brandName) {
+  String brand = brandName;
+  brand.toLowerCase();
+
+  if (brand == "daikin") return BRAND_DAIKIN;
+  if (brand == "mitsubishi") return BRAND_MITSUBISHI;
+  if (brand == "panasonic") return BRAND_PANASONIC;
+  if (brand == "gree") return BRAND_GREE;
+  if (brand == "midea") return BRAND_MIDEA;
+  if (brand == "haier") return BRAND_HAIER;
+  if (brand == "samsung") return BRAND_SAMSUNG;
+  if (brand == "lg") return BRAND_LG;
+  if (brand == "fujitsu") return BRAND_FUJITSU;
+  if (brand == "hitachi") return BRAND_HITACHI;
+
+  return BRAND_GREE;  // Default
 }
 
 // ==============================================================================
@@ -273,6 +403,9 @@ static bool callWhisperAPI(String& transcription) {
 static bool callLLMAPI(const String& text, String& intentJson) {
   Serial.println("[Voice] Calling LLM API...");
 
+  // Build dynamic prompt with current state and registered signals
+  buildDynamicPrompt();
+
   WiFiClientSecure client;
   client.setInsecure();
 
@@ -291,7 +424,7 @@ static bool callLLMAPI(const String& text, String& intentJson) {
 
   JsonObject sysMsg = messages.add<JsonObject>();
   sysMsg["role"] = "system";
-  sysMsg["content"] = LLM_SYSTEM_PROMPT;
+  sysMsg["content"] = dynamicSystemPrompt;  // Use dynamic prompt
 
   JsonObject userMsg = messages.add<JsonObject>();
   userMsg["role"] = "user";
@@ -394,24 +527,43 @@ static bool parseIntent(const String& intentJson, VoiceCommandResult* result) {
   for (JsonObject action : actions) {
     if (result->actionCount >= 5) break;
 
-    result->actions[result->actionCount].type = action["type"].as<String>();
+    VoiceAction& currentAction = result->actions[result->actionCount];
+    currentAction.type = action["type"].as<String>();
+    currentAction.hasValue = false;
+    currentAction.hasStringValue = false;
+    currentAction.value = 0;
+    currentAction.stringValue = "";
 
     if (action.containsKey("value")) {
       if (action["value"].is<int>()) {
-        result->actions[result->actionCount].value = action["value"].as<int>();
+        // Numeric value (temperature, signal number)
+        currentAction.value = action["value"].as<int>();
+        currentAction.hasValue = true;
       } else if (action["value"].is<const char*>()) {
-        // Convert string values like "cool" to mode numbers if needed
         String strVal = action["value"].as<String>();
-        if (strVal == "cool") result->actions[result->actionCount].value = 0;
-        else if (strVal == "heat") result->actions[result->actionCount].value = 1;
-        else if (strVal == "dry") result->actions[result->actionCount].value = 2;
-        else if (strVal == "fan") result->actions[result->actionCount].value = 3;
-        else if (strVal == "auto") result->actions[result->actionCount].value = 4;
-        else result->actions[result->actionCount].value = 0;
+
+        // Check if it's an AC mode (convert to number)
+        if (strVal == "cool") {
+          currentAction.value = 0;
+          currentAction.hasValue = true;
+        } else if (strVal == "heat") {
+          currentAction.value = 1;
+          currentAction.hasValue = true;
+        } else if (strVal == "dry") {
+          currentAction.value = 2;
+          currentAction.hasValue = true;
+        } else if (strVal == "fan") {
+          currentAction.value = 3;
+          currentAction.hasValue = true;
+        } else if (strVal == "auto") {
+          currentAction.value = 4;
+          currentAction.hasValue = true;
+        } else {
+          // Store as string value (brand name, signal name, etc.)
+          currentAction.stringValue = strVal;
+          currentAction.hasStringValue = true;
+        }
       }
-      result->actions[result->actionCount].hasValue = true;
-    } else {
-      result->actions[result->actionCount].hasValue = false;
     }
 
     result->actionCount++;
@@ -433,9 +585,22 @@ static void executeActions(VoiceCommandResult* result) {
     if (action.hasValue) {
       Serial.printf(" = %d", action.value);
     }
+    if (action.hasStringValue) {
+      Serial.printf(" = \"%s\"", action.stringValue.c_str());
+    }
     Serial.println();
 
-    if (action.type == "ac_on") {
+    // ==================== AC Control ====================
+    if (action.type == "ac_brand") {
+      // Set AC brand before sending commands
+      if (action.hasStringValue) {
+        ACBrand newBrand = brandNameToEnum(action.stringValue);
+        acState.brand = newBrand;
+        Serial.printf("[Voice] AC brand set to: %s\n", action.stringValue.c_str());
+        playActionTone();
+      }
+
+    } else if (action.type == "ac_on") {
       acState.power = true;
       sendACState(acState);
       playVoice(VOICE_POWER_ON);
@@ -466,10 +631,35 @@ static void executeActions(VoiceCommandResult* result) {
         default: playActionTone(); break;
       }
 
+    // ==================== IR Signal Control ====================
     } else if (action.type == "ir_send") {
+      // Send by signal number (1-40) - LLM decides based on registered signals
       int signalNum = constrain(action.value, 1, 40);
-      sendSignal(signalNum - 1);  // Convert 1-40 to 0-39
-      playActionTone();
+      int signalIdx = signalNum - 1;  // Convert 1-40 to 0-39
+
+      if (isSignalLearned(signalIdx)) {
+        const char* signalName = getSignalName(signalIdx);
+        Serial.printf("[Voice] Sending IR signal %d: %s\n", signalNum,
+                      signalName ? signalName : "unnamed");
+        sendSignal(signalIdx);
+        playActionTone();
+      } else {
+        Serial.printf("[Voice] IR signal %d not learned\n", signalNum);
+        playBeep(200, 100);
+      }
+
+    } else if (action.type == "ir_send_name") {
+      // Send by signal name (backup option)
+      if (action.hasStringValue) {
+        int signalIdx = findIRSignalByName(action.stringValue.c_str());
+        if (signalIdx >= 0) {
+          sendSignal(signalIdx);
+          playActionTone();
+        } else {
+          Serial.println("[Voice] IR signal not found: " + action.stringValue);
+          playBeep(200, 100);
+        }
+      }
 
     } else {
       Serial.println("[Voice] Unknown action type: " + action.type);

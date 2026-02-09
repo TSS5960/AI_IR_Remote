@@ -472,13 +472,35 @@ When "Hey Bob" is detected:
 
 ### Supported Voice Commands
 
+**AC Control:**
 | Command Example | Action |
 |-----------------|--------|
-| "Turn on the AC" | Powers on AC |
+| "Turn on the AC" | Powers on AC (uses last selected brand) |
+| "Turn on the Samsung AC" | Switches to Samsung, then powers on |
 | "Set temperature to 24 degrees" | Sets AC to 24°C |
 | "Switch to cooling mode" | Changes to cool mode |
 | "Turn off the AC" | Powers off AC |
 | "It's too hot" | Turns on AC + cool mode |
+
+**IR Device Control (Dynamic):**
+The system automatically tells the AI what IR signals you have registered. Just name your signals descriptively!
+
+| Signal Name Example | Voice Command |
+|--------------------|---------------|
+| `BedroomLightOn` | "Turn on the bedroom light" |
+| `LivingRoomLightOff` | "Turn off the living room light" |
+| `TVPower` | "Turn on the TV" |
+| `FanToggle` | "Toggle the fan" |
+
+**Multi-Brand AC Support:**
+Daikin, Mitsubishi, Panasonic, Gree, Midea, Haier, Samsung, LG, Fujitsu, Hitachi
+
+**Setup for IR Devices:**
+1. Learn your remote's IR signals: `learn`
+2. Name them descriptively: `setname 0 BedroomLightOn`
+3. Say "Hey Bob, turn on the bedroom light"
+
+The AI sees your registered signals and decides which one to send!
 
 ### Architecture
 
