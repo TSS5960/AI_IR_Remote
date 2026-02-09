@@ -5,6 +5,7 @@
  */
 
 #include "voice_command.h"
+#include "voice_feedback.h"
 #include "groq_config.h"
 #include "mic_control.h"
 #include "ac_control.h"
@@ -53,7 +54,7 @@ static unsigned long silenceStartTime = 0;
 // ==============================================================================
 
 // Base system prompt - dynamic context will be appended
-static const char* LLM_SYSTEM_PROMPT_BASE = R"(You are a smart home assistant. Parse user commands and return JSON.
+static const char* LLM_SYSTEM_PROMPT_BASE = R"(You are a friendly smart home assistant named Bob. Parse user commands and return JSON.
 
 Available actions:
 - ac_on: Turn on air conditioner (uses current AC brand)
@@ -62,19 +63,31 @@ Available actions:
 - ac_mode: Set mode (value: cool, heat, dry, fan, auto)
 - ac_brand: Switch to different AC brand before sending (value: daikin, mitsubishi, panasonic, gree, midea, haier, samsung, lg, fujitsu, hitachi)
 - ir_send: Send IR signal by slot number (value: 1-40)
+- query_weather: Ask about weather (no value needed)
+- query_sensors: Ask about room temperature/humidity/light (no value needed)
+- speak: Say a response to the user (value: text to speak)
 
 Respond with ONLY valid JSON in this format:
 {"actions": [{"type": "action_name", "value": optional_value}]}
 
-IMPORTANT: For IR devices (lights, fans, TV, etc.), use "ir_send" with the signal number from the registered signals list below.
-When user mentions a specific AC brand, use ac_brand first to switch, then send the command.
-If user just says "air conditioner" without brand, use the current AC brand.
+IMPORTANT RULES:
+1. For IR devices (lights, fans, TV, etc.), use "ir_send" with the signal number from the registered signals list below.
+2. When user mentions a specific AC brand, use ac_brand first to switch, then send the command.
+3. If user just says "air conditioner" without brand, use the current AC brand.
+4. For questions about weather, use "query_weather". The system will fetch and speak the weather.
+5. For questions about room conditions (temperature, humidity, brightness), use "query_sensors".
+6. For action confirmations, add a "speak" action with a SHORT confirmation (max 10 words).
+7. For greetings or casual conversation, respond with a friendly "speak" action.
 
 Examples:
-- "turn on the AC" -> {"actions": [{"type": "ac_on"}]}
-- "set to 22 degrees" -> {"actions": [{"type": "ac_temp", "value": 22}]}
-- "turn on the Daikin AC" -> {"actions": [{"type": "ac_brand", "value": "daikin"}, {"type": "ac_on"}]}
-- "it's hot" -> {"actions": [{"type": "ac_on"}, {"type": "ac_mode", "value": "cool"}]})";
+- "turn on the AC" -> {"actions": [{"type": "ac_on"}, {"type": "speak", "value": "Air conditioner is now on"}]}
+- "set to 22 degrees" -> {"actions": [{"type": "ac_temp", "value": 22}, {"type": "speak", "value": "Temperature set to 22 degrees"}]}
+- "turn on the Daikin AC" -> {"actions": [{"type": "ac_brand", "value": "daikin"}, {"type": "ac_on"}, {"type": "speak", "value": "Daikin AC is now on"}]}
+- "it's hot" -> {"actions": [{"type": "ac_on"}, {"type": "ac_mode", "value": "cool"}, {"type": "speak", "value": "Cooling mode activated"}]}
+- "what's the weather today?" -> {"actions": [{"type": "query_weather"}]}
+- "how hot is this room?" -> {"actions": [{"type": "query_sensors"}]}
+- "hello" -> {"actions": [{"type": "speak", "value": "Hello! How can I help you today?"}]}
+- "thank you" -> {"actions": [{"type": "speak", "value": "You're welcome!"}]})";
 
 // Dynamic prompt storage
 static String dynamicSystemPrompt;
@@ -661,6 +674,25 @@ static void executeActions(VoiceCommandResult* result) {
         }
       }
 
+    // ==================== Query Actions ====================
+    } else if (action.type == "query_weather") {
+      // Fetch and speak weather information
+      Serial.println("[Voice] Processing weather query...");
+      speakWeather();
+
+    } else if (action.type == "query_sensors") {
+      // Read and speak sensor values
+      Serial.println("[Voice] Processing sensor query...");
+      speakSensorReadings();
+
+    // ==================== Voice Feedback ====================
+    } else if (action.type == "speak") {
+      // Speak a response using TTS
+      if (action.hasStringValue && action.stringValue.length() > 0) {
+        Serial.println("[Voice] Speaking: " + action.stringValue);
+        speakText(action.stringValue, true);
+      }
+
     } else {
       Serial.println("[Voice] Unknown action type: " + action.type);
       playBeep(200, 100);  // Error beep
@@ -688,6 +720,12 @@ bool initVoiceCommand() {
 
   Serial.printf("[Voice] Allocated %d bytes for recording buffer\n",
                 MAX_RECORD_SAMPLES * sizeof(int16_t));
+
+  // Initialize voice feedback (TTS) system
+  if (!initVoiceFeedback()) {
+    Serial.println("[Voice] WARNING: Voice feedback init failed (TTS may not work)");
+    // Continue anyway - basic functionality will still work
+  }
 
   // Clear result
   memset(&lastResult, 0, sizeof(lastResult));

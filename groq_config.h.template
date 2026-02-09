@@ -37,6 +37,41 @@
 #define GROQ_LLM_MODEL "llama-3.1-8b-instant"
 
 // ==============================================================================
+// TEXT-TO-SPEECH CONFIGURATION (Google Cloud TTS - FREE: 4M chars/month!)
+// ==============================================================================
+
+// Get FREE API key from: https://console.cloud.google.com/apis/credentials
+// 1. Create a project (or use existing)
+// 2. Enable "Cloud Text-to-Speech API"
+// 3. Create an API key (no billing required for free tier)
+#define TTS_API_HOST "texttospeech.googleapis.com"
+#define TTS_API_ENDPOINT "/v1/text:synthesize"
+#define TTS_API_KEY "YOUR_GOOGLE_API_KEY_HERE"  // Replace with your Google API key
+
+// TTS Voice Configuration
+// Standard voices (FREE: 4M chars/month): en-US-Standard-A to J
+// WaveNet voices (FREE: 1M chars/month): en-US-Wavenet-A to J (better quality)
+// Neural2 voices (FREE: 1M chars/month): en-US-Neural2-A to J (best quality)
+#define TTS_VOICE_NAME "en-US-Standard-F"  // Female voice
+#define TTS_LANGUAGE_CODE "en-US"
+#define TTS_SPEAKING_RATE 1.0              // Speed: 0.25 to 4.0
+#define TTS_PITCH 0.0                      // Pitch: -20.0 to 20.0
+
+// ==============================================================================
+// WEATHER API CONFIGURATION (OpenWeatherMap - Free tier)
+// ==============================================================================
+
+// Get FREE API key from: https://openweathermap.org/api
+#define WEATHER_API_HOST "api.openweathermap.org"
+#define WEATHER_API_ENDPOINT "/data/2.5/weather"
+#define WEATHER_API_KEY "YOUR_OPENWEATHERMAP_API_KEY_HERE"  // Replace with your key
+
+// Your location (get coordinates from Google Maps)
+#define WEATHER_LATITUDE "5.4141"     // Pulau Pinang default
+#define WEATHER_LONGITUDE "101.6869"
+#define WEATHER_UNITS "metric"        // "metric" (Celsius) or "imperial" (Fahrenheit)
+
+// ==============================================================================
 // VOICE COMMAND SETTINGS
 // ==============================================================================
 
@@ -47,7 +82,7 @@
 #define VOICE_SILENCE_THRESHOLD 500
 
 // Silence duration to stop recording (milliseconds)
-#define VOICE_SILENCE_DURATION_MS 5000
+#define VOICE_SILENCE_DURATION_MS 3000
 
 // HTTP timeout for API calls (milliseconds)
 #define GROQ_API_TIMEOUT_MS 30000
